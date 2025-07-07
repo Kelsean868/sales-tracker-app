@@ -1,76 +1,73 @@
 import React, { useState, useMemo } from 'react';
-import { Download, Filter } from 'lucide-react';
-import { POLICY_STATUS_COLORS } from '../../constants';
+import { Search, User, Phone, Mail, Briefcase } from 'lucide-react';
 import Card from '../ui/Card';
 
-const PortfolioScreen = ({ clients, policies, onEditClient, onAddPolicy, onEditPolicy }) => {
-    // const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
-    // const [queryState, setQueryState] = useState({ filters: [], sorts: [] });
+/**
+ * PortfolioScreen component
+ * Displays a searchable list of the user's clients.
+ * @param {object} props - Component props
+ * @param {Array} [props.clients=[]] - Array of user's clients
+ * @returns {JSX.Element} The rendered portfolio screen
+ */
+const PortfolioScreen = ({ clients = [] }) => { // FIX: Added default empty array to prevent crash
+    const [searchTerm, setSearchTerm] = useState('');
 
-    const combinedData = useMemo(() => {
-        const clientData = clients.map(c => ({ ...c, type: 'client', sortKey: c.fullName }));
-        const policyData = policies.map(p => ({ ...p, type: 'policy', sortKey: p.id }));
-        return [...clientData, ...policyData].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-    }, [clients, policies]);
-
-    // Placeholder for filtering and sorting logic
-    const filteredAndSortedData = combinedData;
-
-    // const handleExport = () => {
-    //     // Export logic would go here
-    // };
+    const filteredClients = useMemo(() => {
+        if (!searchTerm) {
+            return clients;
+        }
+        return clients.filter(client =>
+            client.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [clients, searchTerm]);
 
     return (
-        <div className="p-4 pt-20 pb-24">
-            <div className="flex justify-between items-center mb-4">
-                <h1 className="text-2xl font-bold text-white">Portfolio</h1>
-                 <div className="flex items-center gap-2">
-                    {/* <button onClick={handleExport} className="p-2 rounded-md bg-green-600 hover:bg-green-700 text-white"><Download className="w-5 h-5" /></button>
-                    <button onClick={() => setIsFilterPanelOpen(true)} className="p-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white"><Filter className="w-5 h-5" /></button> */}
-                </div>
+        <div className="space-y-4">
+            <h1 className="text-2xl font-bold">Client Portfolio</h1>
+
+            {/* Search Bar */}
+            <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <input
+                    type="text"
+                    placeholder="Search clients..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-gray-800 border-gray-700 rounded-md p-2 pl-10 focus:ring-amber-500 focus:border-amber-500"
+                />
             </div>
-            
+
+            {/* Client List */}
             <div className="space-y-3">
-                {filteredAndSortedData.length > 0 ? filteredAndSortedData.map(result => {
-                    if (result.type === 'client') {
-                        const client = result;
-                        return (
-                            <Card key={`client-${client.id}`} onClick={() => onEditClient(client)}>
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="font-bold text-white text-lg">{client.fullName}</p>
-                                        <p className="text-sm text-gray-400">{client.email}</p>
-                                    </div>
-                                    <div className="flex space-x-2">
-                                        <button onClick={(e) => { e.stopPropagation(); onAddPolicy(client); }} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-3 rounded-md text-sm">Add Policy</button>
-                                    </div>
-                                </div>
-                            </Card>
-                        )
-                    }
-                    if (result.type === 'policy') {
-                        const policy = result;
-                        const owner = clients.find(c => c.id === policy.ownerId);
-                        return (
-                             <Card key={`policy-${policy.id}`} onClick={() => onEditPolicy(policy)}>
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="font-bold text-white text-lg">Policy #{policy.id}</p>
-                                        <p className="text-sm text-gray-400">Owner: {owner?.fullName || 'N/A'}</p>
-                                    </div>
-                                    <span className={`px-2 py-1 text-xs font-bold text-white rounded-full ${POLICY_STATUS_COLORS[policy.status]}`}>{policy.status}</span>
-                                </div>
-                            </Card>
-                        )
-                    }
-                    return null;
-                }) : (
-                     <Card><p className="text-center text-gray-400">No clients or policies found.</p></Card>
+                {filteredClients.length > 0 ? (
+                    filteredClients.map(client => (
+                        <ClientCard key={client.id} client={client} />
+                    ))
+                ) : (
+                    <p className="text-center text-gray-500 pt-8">No clients found.</p>
                 )}
             </div>
-            {/* <FilterSortPanel isOpen={isFilterPanelOpen} onClose={() => setIsFilterPanelOpen(false)} onApply={setQueryState} config={filterConfig} initialState={queryState} /> */}
         </div>
     );
 };
+
+// Sub-component for displaying a single client
+const ClientCard = ({ client }) => (
+    <Card className="cursor-pointer hover:border-amber-500 transition-colors">
+        <div className="flex justify-between items-start">
+            <p className="font-bold text-lg">{client.name}</p>
+            <div className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full">
+                Active Client
+            </div>
+        </div>
+        <div className="mt-3 text-sm text-gray-300 space-y-1">
+            <p className="flex items-center"><Phone size={14} className="mr-2 text-gray-500"/>{client.phone || 'No phone'}</p>
+            <p className="flex items-center"><Mail size={14} className="mr-2 text-gray-500"/>{client.email || 'No email'}</p>
+        </div>
+        <div className="mt-4 pt-3 border-t border-gray-700">
+             <p className="text-xs text-gray-400 flex items-center"><Briefcase size={14} className="mr-2"/>Policies: {client.policies?.length || 0}</p>
+        </div>
+    </Card>
+);
 
 export default PortfolioScreen;

@@ -1,29 +1,44 @@
 import React from 'react';
-import { Home, Calendar as CalendarIcon, BookUser, Trophy, Target, BarChart2, Users2, Users } from 'lucide-react';
+import { LayoutDashboard, Users, Briefcase, Calendar, BookUser, BarChart, Trophy, Target } from 'lucide-react';
 
-const BottomNav = ({ activeTab, setActiveTab }) => {
+/**
+ * BottomNav component
+ * The main navigation bar at the bottom of the screen.
+ * @param {object} props - Component props
+ * @param {string} props.activeScreen - The currently active screen's name
+ * @param {function} props.setActiveScreen - Function to change the active screen
+ * @returns {JSX.Element} The rendered bottom navigation bar
+ */
+const BottomNav = ({ activeScreen, setActiveScreen }) => {
+    // FIX: Restored all navigation items to the array.
     const navItems = [
-        { id: 'dashboard', icon: Home, label: 'Dashboard' },
-        { id: 'agenda', icon: CalendarIcon, label: 'Agenda' },
-        { id: 'portfolio', icon: BookUser, label: 'Portfolio' },
-        { id: 'leaderboard', icon: Trophy, label: 'Leaderboard' },
-        { id: 'goals', icon: Target, label: 'Goals' },
-        { id: 'reports', icon: BarChart2, label: 'Reports' },
-        { id: 'contacts', icon: Users2, label: 'Contacts' },
-        { id: 'leads', icon: Users, label: 'Leads' },
+        { name: 'DASHBOARD', icon: <LayoutDashboard size={24} />, label: 'Dashboard' },
+        { name: 'LEADS', icon: <Users size={24} />, label: 'Leads' },
+        { name: 'PORTFOLIO', icon: <Briefcase size={24} />, label: 'Portfolio' },
+        { name: 'AGENDA', icon: <Calendar size={24} />, label: 'Agenda' },
+        { name: 'CONTACTS', icon: <BookUser size={24} />, label: 'Contacts' },
+        { name: 'REPORTS', icon: <BarChart size={24} />, label: 'Reports' },
+        { name: 'LEADERBOARD', icon: <Trophy size={24} />, label: 'Leaders' },
+        { name: 'GOALS', icon: <Target size={24} />, label: 'Goals' },
     ];
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 bg-gray-900 shadow-lg">
-            <div className="flex justify-around max-w-4xl mx-auto">
-                {navItems.map(item => (
-                    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center justify-center w-full pt-3 pb-2 transition-colors duration-200 ${activeTab === item.id ? 'text-amber-400' : 'text-gray-400 hover:text-white'}`}>
-                        <item.icon className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">{item.label}</span>
+        <nav className="fixed bottom-0 left-0 right-0 bg-gray-800 shadow-lg z-40">
+            <div className="flex justify-around max-w-screen-sm mx-auto">
+                {navItems.map((item) => (
+                    <button
+                        key={item.name}
+                        onClick={() => setActiveScreen(item.name)}
+                        className={`flex flex-col items-center justify-center w-full pt-2 pb-1 text-xs transition-colors duration-200 ${
+                            activeScreen === item.name ? 'text-amber-400' : 'text-gray-400 hover:text-white'
+                        }`}
+                    >
+                        {item.icon}
+                        <span className="mt-1">{item.label}</span>
                     </button>
                 ))}
             </div>
-        </div>
+        </nav>
     );
 };
 

@@ -1,244 +1,157 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Target, Trophy, Edit, Save } from 'lucide-react';
+import { Target, Edit, Save, CheckCircle, Trophy } from 'lucide-react';
 import Card from '../ui/Card';
+import { ACTIVITY_TYPES } from '../../constants'; // FIX: Import the ACTIVITY_TYPES constant
 
-const GOAL_DEFINITIONS = [
-    { key: 'telephoneContacts', label: 'New Contacts', defaultTarget: 100, isCurrency: false },
-    { key: 'appointmentsBooked', label: 'Appointments Booked', defaultTarget: 20, isCurrency: false },
-    { key: 'ffiConducted', label: 'FFI Conducted', defaultTarget: 15, isCurrency: false },
-    { key: 'apiSubmitted', label: 'API Submitted', defaultTarget: 50000, isCurrency: true },
-    { key: 'applications', label: 'Applications Submitted', defaultTarget: 10, isCurrency: false },
-];
-
-const ProgressBar = ({ percentage }) => {
-    const cappedPercentage = Math.min(percentage, 100);
-    const colorClass = useMemo(() => {
-        if (cappedPercentage >= 100) return 'bg-green-500';
-        if (cappedPercentage >= 75) return 'bg-sky-500';
-        if (cappedPercentage >= 50) return 'bg-amber-500';
-        if (cappedPercentage >= 25) return 'bg-orange-500';
-        return 'bg-red-500';
-    }, [cappedPercentage]);
-
-    return (
-        <div className="w-full bg-gray-700 rounded-full h-2.5">
-            <div
-                className={`${colorClass} h-2.5 rounded-full transition-all duration-500`}
-                style={{ width: `${cappedPercentage}%` }}
-            ></div>
-        </div>
-    );
-};
-
-const GoalsScreen = ({ userId, activities }) => {
-    const [period, setPeriod] = useState('weekly'); // 'daily', 'weekly', 'monthly', 'quarterly'
-    const [goals, setGoals] = useState({});
+/**
+ * GoalsScreen component
+ * Allows users to set and track their sales goals.
+ * @param {object} props - Component props
+ * @param {string} props.userId - The ID of the current user
+ * @param {Array} [props.activities=[]] - Array of user's activities
+ * @returns {JSX.Element} The rendered goals screen
+ */
+const GoalsScreen = ({ userId, activities = [] }) => {
+    const [period, setPeriod] = useState('weekly');
     const [isEditing, setIsEditing] = useState(false);
+    
+    // Default goals, can be customized
+    const defaultGoals = {
+        new_contacts: 10,
+        appointments_booked: 5,
+        ffi_conducted: 3,
+        applications_submitted: 2,
+        api: 5000,
+    };
 
-    // Load goals from localStorage on mount
+    const [goals, setGoals] = useState(defaultGoals);
+
+    // Load goals from localStorage when the component mounts
     useEffect(() => {
-        if (!userId) return;
         try {
             const savedGoals = localStorage.getItem(`goals_${userId}`);
             if (savedGoals) {
                 setGoals(JSON.parse(savedGoals));
-            } else {
-                // Initialize with default goals if none are saved
-                const defaultGoals = GOAL_DEFINITIONS.reduce((acc, goal) => {
-                    acc[goal.key] = goal.defaultTarget;
-                    return acc;
-                }, {});
-                setGoals(defaultGoals);
             }
         } catch (error) {
-            console.error("Failed to load goals from localStorage:", error);
+            console.error("Failed to load goals from localStorage", error);
         }
     }, [userId]);
 
     // Save goals to localStorage whenever they change
-    useEffect(() => {
-        if (!userId || Object.keys(goals).length === 0) return;
+    const handleSaveGoals = () => {
         try {
             localStorage.setItem(`goals_${userId}`, JSON.stringify(goals));
+            setIsEditing(false);
         } catch (error) {
-            console.error("Failed to save goals to localStorage:", error);
-        }
-    }, [goals, userId]);
-
-    const handleTargetChange = (key, value) => {
-        const numericValue = Number(value);
-        if (!isNaN(numericValue)) {
-            setGoals(prevGoals => ({
-                ...prevGoals,
-                [key]: numericValue,
-            }));
+            console.error("Failed to save goals to localStorage", error);
         }
     };
 
-    const progressData = useMemo(() => {
+    const handleGoalChange = (key, value) => {
+        setGoals(prev => ({ ...prev, [key]: Number(value) || 0 }));
+    };
+
+    // Calculate current progress based on activities
+    const progress = useMemo(() => {
         const now = new Date();
-        let startDate = new Date();
-        const endDate = new Date(now);
-        endDate.setHours(23, 59, 59, 999);
+        let startOfPeriod;
 
         switch (period) {
             case 'daily':
-                startDate.setHours(0, 0, 0, 0);
-                break;
-            case 'weekly':
-                const firstDayOfWeek = now.getDate() - now.getDay();
-                startDate = new Date(now.setDate(firstDayOfWeek));
-                startDate.setHours(0, 0, 0, 0);
+                startOfPeriod = new Date(now.setHours(0, 0, 0, 0));
                 break;
             case 'monthly':
-                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                startDate.setHours(0, 0, 0, 0);
+                startOfPeriod = new Date(now.getFullYear(), now.getMonth(), 1);
                 break;
             case 'quarterly':
                 const quarter = Math.floor(now.getMonth() / 3);
-                startDate = new Date(now.getFullYear(), quarter * 3, 1);
-                startDate.setHours(0, 0, 0, 0);
+                startOfPeriod = new Date(now.getFullYear(), quarter * 3, 1);
                 break;
+            case 'weekly':
             default:
+                const day = now.getDay();
+                const diff = now.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+                startOfPeriod = new Date(now.setDate(diff));
+                startOfPeriod.setHours(0, 0, 0, 0);
                 break;
         }
 
-        const relevantActivities = activities.filter(act => {
-            if (!act.scheduledTimestamp) return false;
-            const actDate = act.scheduledTimestamp.toDate();
-            return actDate >= startDate && actDate <= endDate;
-        });
+        const relevantActivities = activities.filter(a => new Date(a.timestamp) >= startOfPeriod);
 
-        return GOAL_DEFINITIONS.map(goalDef => {
-            const target = goals[goalDef.key] || goalDef.defaultTarget;
-            let currentValue = 0;
-
-            if (goalDef.key === 'apiSubmitted') {
-                currentValue = relevantActivities
-                    .filter(act => act.type === "Sale Closed (Apps filled, premium collected)")
-                    .reduce((sum, act) => sum + (act.api || 0), 0);
-            } else {
-                const activityDetail = activityTypes[goalDef.category]?.find(a => a.summaryKey === goalDef.key);
-                if(activityDetail) {
-                    currentValue = relevantActivities.filter(act => act.type === activityDetail.name).length;
-                }
-            }
-
-            const percentage = target > 0 ? (currentValue / target) * 100 : 0;
-
-            return {
-                ...goalDef,
-                target,
-                currentValue,
-                percentage,
-            };
-        });
-    }, [activities, period, goals]);
-
-    const summaryStats = useMemo(() => {
-        const totalGoals = progressData.length;
-        const completedGoals = progressData.filter(g => g.currentValue >= g.target).length;
-        const overallPercentage = progressData.reduce((sum, g) => sum + Math.min(g.percentage, 100), 0) / totalGoals;
-
+        // FIX: Use the imported ACTIVITY_TYPES constant
         return {
-            completedGoals,
-            totalGoals,
-            overallPercentage: isNaN(overallPercentage) ? 0 : overallPercentage,
+            new_contacts: relevantActivities.filter(a => a.summaryKey === 'new_contact').length,
+            appointments_booked: relevantActivities.filter(a => a.summaryKey === 'appointment_booked').length,
+            ffi_conducted: relevantActivities.filter(a => a.type === ACTIVITY_TYPES.FFI).length,
+            applications_submitted: relevantActivities.filter(a => a.summaryKey === 'application_submitted').length,
+            api: relevantActivities.filter(a => a.type === ACTIVITY_TYPES.API).reduce((sum, a) => sum + (a.api || 0), 0),
         };
-    }, [progressData]);
-
-    const formatValue = (value, isCurrency) => {
-        if (isCurrency) {
-            return `$${value.toLocaleString()}`;
-        }
-        return value.toLocaleString();
-    };
+    }, [activities, period]);
 
     return (
-        <div className="p-4 pt-20 pb-24">
-            <div className="flex justify-between items-center mb-4">
-                <h1 className="text-2xl font-bold text-white flex items-center">
-                    <Target className="w-7 h-7 mr-3 text-amber-400" />
-                    My Goals
-                </h1>
-                <button
-                    onClick={() => setIsEditing(!isEditing)}
-                    className="flex items-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-                >
-                    {isEditing ? <Save className="w-5 h-5 mr-2" /> : <Edit className="w-5 h-5 mr-2" />}
-                    {isEditing ? 'Save' : 'Edit Targets'}
-                </button>
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-bold">My Goals</h1>
+                {isEditing ? (
+                    <button onClick={handleSaveGoals} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md flex items-center"><Save className="w-4 h-4 mr-2"/>Save Goals</button>
+                ) : (
+                    <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center"><Edit className="w-4 h-4 mr-2"/>Edit Targets</button>
+                )}
+            </div>
+            
+            {/* Period Selector */}
+            <div className="flex items-center bg-gray-800 rounded-lg p-1">
+                <PeriodButton period="daily" activePeriod={period} setPeriod={setPeriod}>Daily</PeriodButton>
+                <PeriodButton period="weekly" activePeriod={period} setPeriod={setPeriod}>Weekly</PeriodButton>
+                <PeriodButton period="monthly" activePeriod={period} setPeriod={setPeriod}>Monthly</PeriodButton>
+                <PeriodButton period="quarterly" activePeriod={period} setPeriod={setPeriod}>Quarterly</PeriodButton>
             </div>
 
-            <Card className="mb-6">
-                <h2 className="text-lg font-semibold text-white mb-3 text-center">Select Period</h2>
-                <div className="flex flex-wrap gap-2">
-                    {['daily', 'weekly', 'monthly', 'quarterly'].map(p => (
-                        <button
-                            key={p}
-                            onClick={() => setPeriod(p)}
-                            className={`flex-1 capitalize py-2 px-3 text-sm font-semibold rounded-md transition-colors ${period === p ? 'bg-amber-500 text-gray-900' : 'bg-gray-700 hover:bg-gray-600'}`}
-                        >
-                            {p}
-                        </button>
-                    ))}
-                </div>
-            </Card>
-
-            <Card className="mb-6">
-                 <h2 className="text-xl font-bold text-white mb-4 text-center">{period.charAt(0).toUpperCase() + period.slice(1)} Summary</h2>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
-                    <div className="bg-gray-900/50 p-4 rounded-lg">
-                        <p className="text-4xl font-bold text-green-400">{summaryStats.completedGoals} / {summaryStats.totalGoals}</p>
-                        <p className="text-gray-400">Goals Completed</p>
-                    </div>
-                     <div className="bg-gray-900/50 p-4 rounded-lg">
-                        <p className="text-4xl font-bold text-sky-400">{summaryStats.overallPercentage.toFixed(0)}%</p>
-                        <p className="text-gray-400">Overall Progress</p>
-                    </div>
-                 </div>
-            </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {progressData.map(goal => (
-                    <Card key={goal.key}>
-                        <div className="flex justify-between items-start mb-2">
-                            <h3 className="text-lg font-bold text-white">{goal.label}</h3>
-                            {goal.percentage >= 100 && !isEditing && (
-                                <div className="flex items-center text-green-400 bg-green-500/10 px-2 py-1 rounded-full text-xs font-bold">
-                                    <Trophy className="w-4 h-4 mr-1" />
-                                    <span>Complete!</span>
-                                </div>
-                            )}
-                        </div>
-
-                        {isEditing ? (
-                            <div className="flex items-center gap-3 my-4">
-                                <span className="text-gray-400">Target:</span>
-                                <input
-                                    type="number"
-                                    value={goals[goal.key] || ''}
-                                    onChange={(e) => handleTargetChange(goal.key, e.target.value)}
-                                    className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2 text-center font-bold"
-                                />
-                            </div>
-                        ) : (
-                            <div className="my-4 text-center">
-                                <p className="text-3xl font-bold text-white">
-                                    {formatValue(goal.currentValue, goal.isCurrency)}
-                                </p>
-                                <p className="text-gray-400">
-                                    of {formatValue(goal.target, goal.isCurrency)}
-                                </p>
-                            </div>
-                        )}
-
-                        <ProgressBar percentage={goal.percentage} />
-                        <p className="text-right text-sm text-gray-400 mt-2">{goal.percentage.toFixed(1)}%</p>
-                    </Card>
-                ))}
+            {/* Goals List */}
+            <div className="space-y-4">
+                <GoalItem label="New Contacts" current={progress.new_contacts} target={goals.new_contacts} isEditing={isEditing} onChange={(val) => handleGoalChange('new_contacts', val)} />
+                <GoalItem label="Appointments Booked" current={progress.appointments_booked} target={goals.appointments_booked} isEditing={isEditing} onChange={(val) => handleGoalChange('appointments_booked', val)} />
+                <GoalItem label="FFI Conducted" current={progress.ffi_conducted} target={goals.ffi_conducted} isEditing={isEditing} onChange={(val) => handleGoalChange('ffi_conducted', val)} />
+                <GoalItem label="Applications Submitted" current={progress.applications_submitted} target={goals.applications_submitted} isEditing={isEditing} onChange={(val) => handleGoalChange('applications_submitted', val)} />
+                <GoalItem label="API" current={progress.api} target={goals.api} isEditing={isEditing} isCurrency onChange={(val) => handleGoalChange('api', val)} />
             </div>
         </div>
+    );
+};
+
+const PeriodButton = ({ period, activePeriod, setPeriod, children }) => (
+    <button onClick={() => setPeriod(period)} className={`w-full px-3 py-1 text-sm rounded-md ${activePeriod === period ? 'bg-amber-500 text-gray-900 font-bold' : 'text-gray-300'}`}>{children}</button>
+);
+
+const GoalItem = ({ label, current, target, isEditing, isCurrency, onChange }) => {
+    const percentage = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+    const isAchieved = current >= target;
+
+    let barColor = 'bg-red-500';
+    if (percentage > 75) barColor = 'bg-green-500';
+    else if (percentage > 40) barColor = 'bg-yellow-500';
+    else if (percentage > 10) barColor = 'bg-blue-500';
+
+    return (
+        <Card>
+            <div className="flex justify-between items-center mb-2">
+                <span className="font-semibold">{label}</span>
+                {isAchieved && !isEditing && <Trophy className="text-yellow-400" size={20} />}
+                <div className="flex items-center">
+                    <span className="text-white font-bold">{isCurrency ? `$${current.toLocaleString()}` : current}</span>
+                    <span className="text-gray-400 mx-1">/</span>
+                    {isEditing ? (
+                        <input type="number" value={target} onChange={(e) => onChange(e.target.value)} className="w-20 bg-gray-700 text-white p-1 rounded-md text-right" />
+                    ) : (
+                        <span className="text-gray-400">{isCurrency ? `$${target.toLocaleString()}` : target}</span>
+                    )}
+                </div>
+            </div>
+            <div className="w-full bg-gray-700 rounded-full h-2.5">
+                <div className={`${barColor} h-2.5 rounded-full`} style={{ width: `${percentage}%` }}></div>
+            </div>
+        </Card>
     );
 };
 
