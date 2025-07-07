@@ -1,24 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { doc, updateDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, onSnapshot, query, addDoc, serverTimestamp } from 'firebase/firestore'; // FIX: Imported serverTimestamp
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase } from 'lucide-react';
 import { USER_ROLES } from '../../constants';
-import AddUserModal from '../modals/AddUserModal';
 
-const EditUserModal = ({ isOpen, onClose, userToEdit }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[110]">
-            <div className="bg-gray-700 p-6 rounded-lg">
-                <h2 className="text-white">Edit User: {userToEdit?.name}</h2>
-                <button onClick={onClose} className="mt-4 text-white">Close</button>
-            </div>
-        </div>
-    );
-};
+// Note: The modals are now rendered in App.js, so we don't need to import them here.
 
-const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storage, onOpenAddUserModal, onOpenEditUserModal }) => {
+const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storage, onOpenAddUserModal, onOpenEditUserModal, addToast }) => {
     const [activeTab, setActiveTab] = useState('profile');
     const [isEditing, setIsEditing] = useState(false);
     const [profileData, setProfileData] = useState({});
@@ -26,12 +15,13 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef(null);
     
+    // Management State
     const [allUsers, setAllUsers] = useState([]);
     const [teams, setTeams] = useState([]);
     const [units, setUnits] = useState([]);
     const [branches, setBranches] = useState([]);
     const [newOrgUnit, setNewOrgUnit] = useState({ name: '', type: '' });
-    
+
     const auth = getAuth();
 
     const managementRoles = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.UNIT_MANAGER];
@@ -56,24 +46,41 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
         ...user?.settings,
     }), [user]);
 
+    // This effect now sets up REAL-TIME listeners for management data
     useEffect(() => {
-        console.log("DEBUG: ProfileScreen.js - Effect Running. isOpen:", isOpen, "canManage:", canManage);
-        if (isOpen && canManage && db) {
-            console.log("DEBUG: ProfileScreen.js - Conditions met. Fetching management data...");
-            const fetchManagementData = async () => {
-                try {
-                    const usersSnapshot = await getDocs(collection(db, `users`));
-                    console.log("DEBUG: ProfileScreen.js - Fetched users successfully.");
-                    setAllUsers(usersSnapshot.docs.map(d => ({id: d.id, ...d.data()})));
-                } catch (error) {
-                    console.error("DEBUG: ProfileScreen.js - Error fetching management data:", error);
-                }
-            };
-            fetchManagementData();
+        if (!isOpen || !canManage || !db) {
+            return; 
         }
+
+        const collectionsToListen = {
+            users: collection(db, 'users'),
+            teams: collection(db, 'teams'),
+            units: collection(db, 'units'),
+            branches: collection(db, 'branches'),
+        };
+
+        const unsubscribes = Object.entries(collectionsToListen).map(([key, collectionRef]) => {
+            return onSnapshot(query(collectionRef), (snapshot) => {
+                const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                switch (key) {
+                    case 'users': setAllUsers(data); break;
+                    case 'teams': setTeams(data); break;
+                    case 'units': setUnits(data); break;
+                    case 'branches': setBranches(data); break;
+                    default: break;
+                }
+            }, (error) => {
+                console.error(`Error fetching real-time ${key}:`, error);
+            });
+        });
+
+        return () => {
+            unsubscribes.forEach(unsub => unsub());
+        };
+
     }, [isOpen, canManage, db]);
 
-    // Other useEffects and handlers... (no changes needed for them)
+
     useEffect(() => {
         if (isOpen) {
             setProfileData(initialProfileState);
@@ -113,15 +120,21 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
             await updateDoc(userDocRef, dataToUpdate);
             onUpdateUser({ ...user, ...dataToUpdate });
             setIsEditing(false);
+            addToast('Profile saved!', 'success');
         } catch (error) {
             console.error("Error updating profile:", error);
+            addToast('Failed to save profile.', 'error');
         }
     };
 
     const handlePasswordReset = () => {
         if (user?.email) {
             sendPasswordResetEmail(auth, user.email)
-                .catch((error) => console.error("Error sending password reset email:", error));
+                .then(() => addToast('Password reset email sent.', 'info'))
+                .catch((error) => {
+                    console.error("Error sending password reset email:", error);
+                    addToast('Failed to send reset email.', 'error');
+                });
         }
     };
     
@@ -139,8 +152,10 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
             const userDocRef = doc(db, `users`, userId);
             await updateDoc(userDocRef, { photoURL: downloadURL });
             onUpdateUser({ ...user, photoURL: downloadURL });
+            addToast('Profile picture updated!', 'success');
         } catch (error) {
             console.error("Error uploading profile picture:", error);
+            addToast('Image upload failed.', 'error');
         } finally {
             setIsUploading(false);
         }
@@ -148,12 +163,20 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
 
     const handleCreateOrgUnit = async (e) => {
         e.preventDefault();
-        if (!newOrgUnit.name || !newOrgUnit.type) return;
+        if (!newOrgUnit.name || !newOrgUnit.type) {
+            addToast('Please provide a name and select a type.', 'error');
+            return;
+        }
         try {
-            await addDoc(collection(db, `${newOrgUnit.type}s`), { name: newOrgUnit.name });
+            await addDoc(collection(db, `${newOrgUnit.type}s`), { 
+                name: newOrgUnit.name,
+                createdAt: serverTimestamp(),
+            });
+            addToast(`${newOrgUnit.type.charAt(0).toUpperCase() + newOrgUnit.type.slice(1)} created!`, 'success');
             setNewOrgUnit({ name: '', type: '' });
         } catch (error) {
             console.error("Error creating organizational unit:", error);
+            addToast('Failed to create unit.', 'error');
         }
     };
 

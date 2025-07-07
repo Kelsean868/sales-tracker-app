@@ -6,7 +6,7 @@ import {
     createUserWithEmailAndPassword, 
     signInWithEmailAndPassword 
 } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, collectionGroup, where } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -29,6 +29,9 @@ import ClientModal from './components/modals/ClientModal';
 import LogActivityModal from './components/modals/LogActivityModal';
 import PolicyModal from './components/modals/PolicyModal';
 import AddUserModal from './components/modals/AddUserModal';
+import EditUserModal from './components/modals/EditUserModal';
+import { NotificationProvider, useNotification } from './context/NotificationContext';
+import { ACTIVITY_POINTS } from './constants';
 
 
 const firebaseConfig = {
@@ -86,17 +89,21 @@ const AuthScreen = () => {
 };
 
 
-const App = () => {
+const AppContent = () => {
     const [authReady, setAuthReady] = useState(false);
     const [userReady, setUserReady] = useState(false);
     const [user, setUser] = useState(null);
     const [userId, setUserId] = useState(null);
     const [activeScreen, setActiveScreen] = useState('DASHBOARD');
     
+    const [allUsers, setAllUsers] = useState([]);
     const [leads, setLeads] = useState([]);
     const [clients, setClients] = useState([]);
     const [activities, setActivities] = useState([]);
     const [contacts, setContacts] = useState([]);
+    const [teams, setTeams] = useState([]);
+    const [units, setUnits] = useState([]);
+    const [branches, setBranches] = useState([]);
 
     const [isProfileOpen, setProfileOpen] = useState(false);
     const [isAddLeadModalOpen, setAddLeadModalOpen] = useState(false);
@@ -105,22 +112,21 @@ const App = () => {
     const [isLogActivityModalOpen, setLogActivityModalOpen] = useState(false);
     const [isPolicyModalOpen, setPolicyModalOpen] = useState(false);
     const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
+    const [isEditUserModalOpen, setEditUserModalOpen] = useState(false);
 
     const [selectedLead, setSelectedLead] = useState(null);
     const [selectedClient, ] = useState(null);
-    const [activityTarget, ] = useState(null);
+    const [activityTarget, setActivityTarget] = useState(null);
     const [selectedPolicy, ] = useState(null);
+    const [userToEdit, setUserToEdit] = useState(null);
 
-    // Effect 1: Handle Auth State
+    const { addToast } = useNotification();
+
     useEffect(() => {
-        console.log("DEBUG: App.js - Auth Effect Running");
         const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-            console.log("DEBUG: App.js - onAuthStateChanged fired.");
             if (firebaseUser && !firebaseUser.isAnonymous) {
-                console.log("DEBUG: App.js - User is LOGGED IN. UID:", firebaseUser.uid);
                 setUserId(firebaseUser.uid);
             } else {
-                console.log("DEBUG: App.js - User is LOGGED OUT.");
                 setUser(null);
                 setUserId(null);
                 setAuthReady(true);
@@ -129,9 +135,7 @@ const App = () => {
         return () => unsubscribe();
     }, []);
 
-    // Effect 2: Handle User Document Loading
     useEffect(() => {
-        console.log("DEBUG: App.js - User Doc Effect Running. Current userId:", userId);
         if (!userId) {
             if(authReady) setUserReady(true);
             return;
@@ -139,9 +143,7 @@ const App = () => {
 
         const userDocRef = doc(db, 'users', userId);
         const unsubUser = onSnapshot(userDocRef, async (docSnapshot) => {
-            console.log("DEBUG: App.js - User document snapshot received.");
             if (!docSnapshot.exists()) {
-                console.log("DEBUG: App.js - User document does NOT exist. Creating it...");
                 const newUser = {
                     uid: userId,
                     email: auth.currentUser.email,
@@ -152,12 +154,10 @@ const App = () => {
                 try {
                     await setDoc(userDocRef, newUser);
                 } catch (error) {
-                    console.error("DEBUG: App.js - Error creating user document:", error);
+                    console.error("Error creating user document:", error);
                 }
             } else {
-                const userData = { uid: docSnapshot.id, ...docSnapshot.data() };
-                console.log("DEBUG: App.js - User document EXISTS. User role:", userData.role);
-                setUser(userData);
+                setUser({ uid: docSnapshot.id, ...docSnapshot.data() });
             }
             setAuthReady(true);
             setUserReady(true);
@@ -165,58 +165,133 @@ const App = () => {
         return () => unsubUser();
     }, [userId, authReady]);
 
-    // Effect 3: Handle Data Fetching
     useEffect(() => {
-        console.log(`DEBUG: App.js - Data Fetching Effect Running. User Ready: ${userReady}, User ID: ${userId}`);
-        if (!userReady || !userId) return;
+        if (!userReady || !user) return;
 
-        console.log("DEBUG: App.js - Conditions met. Fetching sub-collections...");
-        const collections = {
-            leads: collection(db, 'users', userId, 'leads'),
-            clients: collection(db, 'users', userId, 'clients'),
-            activities: collection(db, 'users', userId, 'activities'),
-            contacts: collection(db, 'users', userId, 'contacts'),
+        const managementRoles = ['super_admin', 'admin', 'branch_manager', 'unit_manager'];
+        let unsubscribes = [];
+
+        if (managementRoles.includes(user.role)) {
+            const queries = {
+                leads: query(collectionGroup(db, 'leads')),
+                activities: query(collectionGroup(db, 'activities')),
+                clients: query(collectionGroup(db, 'clients')),
+                contacts: query(collectionGroup(db, 'contacts')),
+                allUsers: query(collection(db, 'users')),
+            };
+            unsubscribes.push(onSnapshot(queries.leads, (snapshot) => setLeads(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+            unsubscribes.push(onSnapshot(queries.activities, (snapshot) => setActivities(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+            unsubscribes.push(onSnapshot(queries.clients, (snapshot) => setClients(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+            unsubscribes.push(onSnapshot(queries.contacts, (snapshot) => setContacts(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+            unsubscribes.push(onSnapshot(queries.allUsers, (snapshot) => setAllUsers(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+
+        } else {
+            const userCollections = {
+                leads: collection(db, 'users', user.uid, 'leads'),
+                clients: collection(db, 'users', user.uid, 'clients'),
+                activities: collection(db, 'users', user.uid, 'activities'),
+                contacts: collection(db, 'users', user.uid, 'contacts'),
+            };
+            unsubscribes = Object.entries(userCollections).map(([key, collectionRef]) => {
+                return onSnapshot(query(collectionRef), (snapshot) => {
+                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    switch (key) {
+                        case 'leads': setLeads(data); break;
+                        case 'clients': setClients(data); break;
+                        case 'activities': setActivities(data); break;
+                        case 'contacts': setContacts(data); break;
+                        default: break;
+                    }
+                });
+            });
+            unsubscribes.push(onSnapshot(query(collection(db, 'users')), (snapshot) => setAllUsers(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+        }
+
+        const managementCollections = {
+            teams: collection(db, 'teams'),
+            units: collection(db, 'units'),
+            branches: collection(db, 'branches'),
         };
-        const unsubscribes = Object.entries(collections).map(([key, collectionRef]) => {
-            const q = query(collectionRef);
-            return onSnapshot(q, (snapshot) => {
+        const mgmtUnsubscribes = Object.entries(managementCollections).map(([key, collectionRef]) => {
+            return onSnapshot(query(collectionRef), (snapshot) => {
                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 switch (key) {
-                    case 'leads': setLeads(data); break;
-                    case 'clients': setClients(data); break;
-                    case 'activities': setActivities(data); break;
-                    case 'contacts': setContacts(data); break;
+                    case 'teams': setTeams(data); break;
+                    case 'units': setUnits(data); break;
+                    case 'branches': setBranches(data); break;
                     default: break;
                 }
-            }, (error) => console.error(`DEBUG: App.js - Error fetching ${key}:`, error));
+            });
         });
+
+        unsubscribes.push(...mgmtUnsubscribes);
         return () => unsubscribes.forEach(unsub => unsub());
-    }, [userReady, userId]);
+
+    }, [userReady, user]);
 
     const handleAddLead = async (leadData) => {
-        if (!userId) return;
+        if (!userId || !user) return;
         try {
             await addDoc(collection(db, 'users', userId, 'leads'), {
                 ...leadData,
                 createdAt: serverTimestamp(),
                 userId: userId,
+                teamId: user.teamId || null,
+                unitId: user.unitId || null,
+                branchId: user.branchId || null,
             });
+            addToast('Lead added successfully!', 'success');
         } catch (error) {
             console.error("Error adding lead: ", error);
+            addToast('Failed to add lead.', 'error');
+        }
+    };
+
+    const handleLogActivity = async (activityData) => {
+        if (!userId || !user) return;
+        try {
+            const activitiesCollectionRef = collection(db, 'users', userId, 'activities');
+            await addDoc(activitiesCollectionRef, {
+                ...activityData,
+                timestamp: serverTimestamp(),
+                userId: userId,
+                points: ACTIVITY_POINTS[activityData.type] || 0,
+                teamId: user.teamId || null,
+                unitId: user.unitId || null,
+                branchId: user.branchId || null,
+            });
+            addToast('Activity logged successfully!', 'success');
+        } catch (error) {
+            console.error("Error logging activity: ", error);
+            addToast('Failed to log activity.', 'error');
         }
     };
 
     const handleCreateUser = async (newUserData) => {
-        console.log("DEBUG: App.js - handleCreateUser called.");
         try {
             const addUserFunction = httpsCallable(functions, 'addUser');
-            const result = await addUserFunction(newUserData);
-            console.log("Cloud Function result:", result.data);
-            alert("User created successfully!");
+            await addUserFunction(newUserData);
+            addToast("User created successfully!", 'success');
         } catch (error) {
-            console.error("DEBUG: App.js - Error calling addUser function:", error);
-            alert(`Error: ${error.message}`);
+            console.error("Error calling addUser function:", error);
+            addToast(`Error: ${error.message}`, 'error');
         }
+    };
+
+    const handleEditUser = async (uidToEdit, updates) => {
+        try {
+            const editUserFunction = httpsCallable(functions, 'editUser');
+            await editUserFunction({ uidToEdit, updates });
+            addToast("User updated successfully!", 'success');
+        } catch (error) {
+            console.error("Error calling editUser function:", error);
+            addToast(`Error: ${error.message}`, 'error');
+        }
+    };
+
+    const handleOpenEditUserModal = (userToEdit) => {
+        setUserToEdit(userToEdit);
+        setEditUserModalOpen(true);
     };
 
     const handleSelectLead = (lead) => {
@@ -230,15 +305,15 @@ const App = () => {
 
     const renderActiveScreen = () => {
         switch (activeScreen) {
-            case 'DASHBOARD': return <Dashboard activities={activities} leads={leads} />;
-            case 'LEADS': return <LeadsScreen leads={leads} onSelectLead={handleSelectLead} />;
+            case 'DASHBOARD': return <Dashboard activities={activities} leads={leads} currentUser={user} />;
+            case 'LEADS': return <LeadsScreen leads={leads} onSelectLead={handleSelectLead} allUsers={allUsers} currentUser={user} />;
             case 'PORTFOLIO': return <PortfolioScreen clients={clients} />;
             case 'AGENDA': return <AgendaScreen activities={activities} />;
             case 'CONTACTS': return <ContactsScreen contacts={contacts} />;
-            case 'LEADERBOARD': return <LeaderboardScreen />;
-            case 'REPORTS': return <ReportsScreen />;
+            case 'LEADERBOARD': return <LeaderboardScreen allUsers={allUsers} activities={activities} />;
+            case 'REPORTS': return <ReportsScreen activities={activities} leads={leads} />;
             case 'GOALS': return <GoalsScreen activities={activities} userId={userId} />;
-            default: return <Dashboard activities={activities} leads={leads}/>;
+            default: return <Dashboard activities={activities} leads={leads} currentUser={user} />;
         }
     };
 
@@ -258,7 +333,7 @@ const App = () => {
         <div className="bg-gray-900 text-white min-h-screen font-sans">
             <TopHeader user={user} onProfileClick={() => setProfileOpen(true)} />
             <main className="p-4 pb-20">{renderActiveScreen()}</main>
-            <SpeedDial onAddLead={() => setAddLeadModalOpen(true)} />
+            <SpeedDial onAddLead={() => setAddLeadModalOpen(true)} onLogActivity={() => setLogActivityModalOpen(true)} />
             <BottomNav activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
 
             <ProfileScreen 
@@ -270,15 +345,33 @@ const App = () => {
                 db={db}
                 storage={storage}
                 onOpenAddUserModal={() => setAddUserModalOpen(true)}
-                onOpenEditUserModal={() => {}}
+                onOpenEditUserModal={handleOpenEditUserModal}
+                addToast={addToast}
             />
             <AddLeadModal isOpen={isAddLeadModalOpen} onClose={() => setAddLeadModalOpen(false)} onAddLead={handleAddLead} />
             <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setAddUserModalOpen(false)} onAddUser={handleCreateUser} />
+            <EditUserModal 
+                isOpen={isEditUserModalOpen}
+                onClose={() => setEditUserModalOpen(false)}
+                onSave={handleEditUser}
+                userToEdit={userToEdit}
+                teams={teams}
+                units={units}
+                branches={branches}
+            />
             <LeadDetailModal isOpen={isLeadDetailModalOpen} onClose={() => {setLeadDetailModalOpen(false); setSelectedLead(null);}} lead={selectedLead} />
             <ClientModal isOpen={isClientModalOpen} onClose={() => setClientModalOpen(false)} client={selectedClient} />
-            <LogActivityModal isOpen={isLogActivityModalOpen} onClose={() => setLogActivityModalOpen(false)} relatedTo={activityTarget} onLogActivity={() => {}}/>
+            <LogActivityModal isOpen={isLogActivityModalOpen} onClose={() => setLogActivityModalOpen(false)} relatedTo={activityTarget} onLogActivity={handleLogActivity}/>
             <PolicyModal isOpen={isPolicyModalOpen} onClose={() => setPolicyModalOpen(false)} policy={selectedPolicy} clientId={selectedClient?.id} />
         </div>
+    );
+};
+
+const App = () => {
+    return (
+        <NotificationProvider>
+            <AppContent />
+        </NotificationProvider>
     );
 };
 

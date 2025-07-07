@@ -1,54 +1,46 @@
 import React, { useMemo } from 'react';
-import { TrendingUp, Target, CheckCircle, Award, Zap, Sun, Moon, Star } from 'lucide-react';
+import { TrendingUp, Target, CheckCircle, Award, Zap, Sun, Moon, Star, Users } from 'lucide-react';
 import Card from '../ui/Card';
 
 // Helper function to get achievement details based on points.
 const getAchievement = (points) => {
-    if (points >= 100) return { name: 'Master', icon: <Award className="text-amber-400" />, color: 'amber-400' };
-    if (points >= 75) return { name: 'Elite', icon: <Star className="text-yellow-500" />, color: 'yellow-500' };
-    if (points >= 50) return { name: 'Pro', icon: <Zap className="text-blue-500" />, color: 'blue-500' };
-    if (points >= 25) return { name: 'Rookie', icon: <Sun className="text-green-500" />, color: 'green-500' };
+    if (points >= 1000) return { name: 'Master', icon: <Award className="text-amber-400" />, color: 'amber-400' };
+    if (points >= 500) return { name: 'Elite', icon: <Star className="text-yellow-500" />, color: 'yellow-500' };
+    if (points >= 250) return { name: 'Pro', icon: <Zap className="text-blue-500" />, color: 'blue-500' };
+    if (points >= 100) return { name: 'Rookie', icon: <Sun className="text-green-500" />, color: 'green-500' };
     return { name: 'Beginner', icon: <Moon className="text-gray-500" />, color: 'gray-500' };
 };
 
 /**
  * Dashboard component
- * The main landing screen of the application, showing key stats and overviews.
+ * Now supports a manager view to show aggregate team stats.
  * @param {object} props - Component props
- * @param {Array} [props.activities=[]] - Array of user activities
- * @param {Array} [props.leads=[]] - Array of user leads
+ * @param {Array} [props.activities=[]] - Array of activities (user's or all, depending on role)
+ * @param {Array} [props.leads=[]] - Array of leads (user's or all, depending on role)
+ * @param {object} props.currentUser - The currently logged-in user object
  * @returns {JSX.Element} The rendered dashboard screen
  */
-const Dashboard = ({ activities = [], leads = [] }) => {
-    // useMemo will recalculate stats only when activities or leads change.
+const Dashboard = ({ activities = [], leads = [], currentUser }) => {
+    
+    const managementRoles = ['super_admin', 'admin', 'branch_manager', 'unit_manager'];
+    const isManagerView = currentUser && managementRoles.includes(currentUser.role);
+
     const stats = useMemo(() => {
-        // Get the current date's components in the local timezone
         const today = new Date();
         const todayYear = today.getFullYear();
         const todayMonth = today.getMonth();
         const todayDate = today.getDate();
 
-        // FIX #2: Compare calendar dates instead of timestamps to avoid timezone issues.
-        const newLeadsToday = leads.filter(l => {
-            if (!l.createdAt?.toDate) {
-                return false; // Guard against missing or invalid data
-            }
-            const leadDate = l.createdAt.toDate();
-            return leadDate.getFullYear() === todayYear &&
-                   leadDate.getMonth() === todayMonth &&
-                   leadDate.getDate() === todayDate;
-        }).length;
+        const isToday = (timestamp) => {
+            if (!timestamp?.toDate) return false;
+            const date = timestamp.toDate();
+            return date.getFullYear() === todayYear &&
+                   date.getMonth() === todayMonth &&
+                   date.getDate() === todayDate;
+        };
 
-        // Apply the same robust filtering for activities
-        const todaysActivities = activities.filter(a => {
-            if (!a.timestamp?.toDate) {
-                return false;
-            }
-            const activityDate = a.timestamp.toDate();
-            return activityDate.getFullYear() === todayYear &&
-                   activityDate.getMonth() === todayMonth &&
-                   activityDate.getDate() === todayDate;
-        });
+        const todaysActivities = activities.filter(a => isToday(a.createdAt || a.timestamp));
+        const newLeadsToday = leads.filter(l => isToday(l.createdAt)).length;
 
         const pointsToday = todaysActivities.reduce((acc, curr) => acc + (curr.points || 0), 0);
         const apiToday = todaysActivities.reduce((acc, curr) => acc + (curr.api || 0), 0);
@@ -70,7 +62,11 @@ const Dashboard = ({ activities = [], leads = [] }) => {
             <Card>
                 <div className="flex justify-between items-center">
                     <div>
-                        <p className="text-lg text-gray-400">Today's Points</p>
+                        {/* Title changes based on view */}
+                        <p className="text-lg text-gray-400 flex items-center">
+                            {isManagerView && <Users size={18} className="mr-2" />}
+                            {isManagerView ? "Team's Points Today" : "My Points Today"}
+                        </p>
                         <p className="text-4xl font-bold">{stats.pointsToday}</p>
                     </div>
                     <div className={`text-right text-${achievement.color}`}>
@@ -82,20 +78,20 @@ const Dashboard = ({ activities = [], leads = [] }) => {
 
             {/* Quick Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <StatCard icon={<TrendingUp />} label="API Today" value={`$${stats.apiToday.toLocaleString()}`} />
-                <StatCard icon={<Target />} label="New Leads" value={stats.newLeadsToday} />
-                <StatCard icon={<CheckCircle />} label="Follow-ups" value={stats.followUpsToday} />
+                <StatCard icon={<TrendingUp />} label={isManagerView ? "Team API Today" : "My API Today"} value={`$${stats.apiToday.toLocaleString()}`} />
+                <StatCard icon={<Target />} label="New Leads Today" value={stats.newLeadsToday} />
+                <StatCard icon={<CheckCircle />} label="Follow-ups Today" value={stats.followUpsToday} />
             </div>
 
             {/* Placeholder for Recent Activity */}
             <Card>
-                <h3 className="font-bold text-lg mb-2">Recent Activity</h3>
+                <h3 className="font-bold text-lg mb-2">{isManagerView ? "Recent Team Activity" : "My Recent Activity"}</h3>
                 <p className="text-gray-400 text-center py-4">Recent activity feed will be displayed here.</p>
             </Card>
 
             {/* Placeholder for Upcoming Tasks */}
             <Card>
-                <h3 className="font-bold text-lg mb-2">Upcoming Tasks</h3>
+                <h3 className="font-bold text-lg mb-2">{isManagerView ? "Team's Upcoming Tasks" : "My Upcoming Tasks"}</h3>
                 <p className="text-gray-400 text-center py-4">A list of upcoming scheduled tasks will appear here.</p>
             </Card>
         </div>

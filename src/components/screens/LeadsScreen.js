@@ -1,41 +1,50 @@
 import React, { useState, useMemo } from 'react';
-import { List, Trello, Phone, Mail, DollarSign } from 'lucide-react';
+import { List, Trello, User, Phone, Mail, DollarSign } from 'lucide-react';
 import { LEAD_STAGES, LEAD_TEMPERATURE_COLORS } from '../../constants';
 import Card from '../ui/Card';
 
 /**
  * LeadsScreen component
- * Displays and manages user leads in either a pipeline or list view.
+ * Displays and manages leads. Now supports a manager view.
  * @param {object} props - Component props
- * @param {Array} [props.leads=[]] - Array of user leads
+ * @param {Array} [props.leads=[]] - Array of leads to display
  * @param {function} props.onSelectLead - Function to call when a lead is selected
+ * @param {Array} [props.allUsers=[]] - Array of all users (for manager view)
+ * @param {object} props.currentUser - The currently logged-in user object
  * @returns {JSX.Element} The rendered leads screen
  */
-const LeadsScreen = ({ leads = [], onSelectLead }) => {
-    const [view, setView] = useState('pipeline'); // 'pipeline' or 'list'
-    const [activeFilter, setActiveFilter] = useState('ALL'); 
+const LeadsScreen = ({ leads = [], onSelectLead, allUsers = [], currentUser }) => {
+    const [view, setView] = useState('pipeline');
+    const [activeFilter, setActiveFilter] = useState('ALL');
 
-    // Memoize the filtered leads to prevent unnecessary recalculations
+    const managementRoles = ['super_admin', 'admin', 'branch_manager', 'unit_manager'];
+    const isManagerView = currentUser && managementRoles.includes(currentUser.role);
+
     const filteredLeads = useMemo(() => {
         if (activeFilter === 'ALL') {
             return leads;
         }
-        // FIX: Use a case-insensitive comparison for robust filtering.
         return leads.filter(lead => 
             lead.status && lead.status.toLowerCase() === activeFilter.toLowerCase()
         );
     }, [leads, activeFilter]);
 
+    // Helper function to find a user's name by their ID
+    const getUserName = (userId) => {
+        if (!userId || !allUsers.length) return 'Unknown Agent';
+        const user = allUsers.find(u => u.id === userId);
+        return user ? user.name : 'Unknown Agent';
+    };
+
     const renderView = () => {
         if (view === 'pipeline') {
-            return <PipelineView leads={filteredLeads} onSelectLead={onSelectLead} />;
+            return <PipelineView leads={filteredLeads} onSelectLead={onSelectLead} isManagerView={isManagerView} getUserName={getUserName} />;
         }
-        return <ListView leads={filteredLeads} onSelectLead={onSelectLead} />;
+        return <ListView leads={filteredLeads} onSelectLead={onSelectLead} isManagerView={isManagerView} getUserName={getUserName} />;
     };
 
     return (
         <div className="space-y-4">
-            {/* Header with View Toggler */}
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-bold">Leads</h1>
                 <div className="flex items-center bg-gray-800 rounded-lg p-1">
@@ -44,7 +53,6 @@ const LeadsScreen = ({ leads = [], onSelectLead }) => {
                 </div>
             </div>
 
-            {/* Filter Buttons */}
             <div className="flex space-x-2 overflow-x-auto pb-2">
                 <FilterButton status="ALL" activeFilter={activeFilter} setActiveFilter={setActiveFilter}>All</FilterButton>
                 {Object.values(LEAD_STAGES).map(stage => (
@@ -52,13 +60,11 @@ const LeadsScreen = ({ leads = [], onSelectLead }) => {
                 ))}
             </div>
 
-            {/* Content Area */}
             {renderView()}
         </div>
     );
 };
 
-// Sub-component for filter buttons
 const FilterButton = ({ status, activeFilter, setActiveFilter, children }) => (
     <button
         onClick={() => setActiveFilter(status)}
@@ -68,16 +74,19 @@ const FilterButton = ({ status, activeFilter, setActiveFilter, children }) => (
     </button>
 );
 
-// Sub-component for the Pipeline View
-const PipelineView = ({ leads, onSelectLead }) => (
+const PipelineView = ({ leads, onSelectLead, isManagerView, getUserName }) => (
     <div className="flex space-x-4 overflow-x-auto pb-4">
         {Object.values(LEAD_STAGES).map(stage => (
             <div key={stage} className="w-72 bg-gray-800 rounded-lg p-3 flex-shrink-0">
                 <h3 className="font-bold mb-3 text-amber-400">{stage}</h3>
                 <div className="space-y-3">
-                    {/* FIX: Use a case-insensitive comparison to correctly place leads in columns. */}
                     {leads.filter(lead => lead.status && lead.status.toLowerCase() === stage.toLowerCase()).map(lead => (
-                        <LeadCard key={lead.id} lead={lead} onClick={() => onSelectLead(lead)} />
+                        <LeadCard 
+                            key={lead.id} 
+                            lead={lead} 
+                            onClick={() => onSelectLead(lead)}
+                            userName={isManagerView ? getUserName(lead.userId) : null}
+                        />
                     ))}
                 </div>
             </div>
@@ -85,17 +94,21 @@ const PipelineView = ({ leads, onSelectLead }) => (
     </div>
 );
 
-// Sub-component for the List View
-const ListView = ({ leads, onSelectLead }) => (
+const ListView = ({ leads, onSelectLead, isManagerView, getUserName }) => (
     <div className="space-y-3">
         {leads.map(lead => (
-            <LeadCard key={lead.id} lead={lead} onClick={() => onSelectLead(lead)} />
+            <LeadCard 
+                key={lead.id} 
+                lead={lead} 
+                onClick={() => onSelectLead(lead)}
+                userName={isManagerView ? getUserName(lead.userId) : null}
+            />
         ))}
     </div>
 );
 
-// Reusable card for displaying a single lead
-const LeadCard = ({ lead, onClick }) => (
+// LeadCard now accepts and displays the agent's name
+const LeadCard = ({ lead, onClick, userName }) => (
     <Card onClick={onClick} className="cursor-pointer hover:border-amber-500 transition-colors">
         <div className="flex justify-between items-start">
             <div>
@@ -109,10 +122,16 @@ const LeadCard = ({ lead, onClick }) => (
             )}
         </div>
         <div className="mt-3 text-sm text-gray-300 space-y-1">
-            <p className="flex items-center"><Phone size={14} className="mr-2 text-gray-500"/>{lead.phone}</p>
+            <p className="flex items-center"><Phone size={14} className="mr-2 text-gray-500"/>{lead.phone || 'No phone'}</p>
             <p className="flex items-center"><Mail size={14} className="mr-2 text-gray-500"/>{lead.email || 'No email'}</p>
             {lead.estimatedValue && <p className="flex items-center"><DollarSign size={14} className="mr-2 text-gray-500"/>${Number(lead.estimatedValue).toLocaleString()}</p>}
         </div>
+        {/* Conditionally render the assigned agent's name */}
+        {userName && 
+            <div className="mt-3 pt-2 border-t border-gray-700/50">
+                <p className="text-xs text-amber-400 flex items-center"><User size={14} className="mr-2"/>Assigned to: {userName}</p>
+            </div>
+        }
     </Card>
 );
 

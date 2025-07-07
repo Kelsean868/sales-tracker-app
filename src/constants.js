@@ -11,7 +11,7 @@ export const USER_ROLES = {
     SALES_PERSON: 'sales_person',
 };
 
-// Correctly named and exported constant for Activity Types
+// Activity Types
 export const ACTIVITY_TYPES = {
     NOTE: 'Note',
     CALL: 'Call',
@@ -20,6 +20,17 @@ export const ACTIVITY_TYPES = {
     FFI: 'FFI',
     API: 'API',
 };
+
+// --- NEW: Points for each activity type ---
+export const ACTIVITY_POINTS = {
+    [ACTIVITY_TYPES.NOTE]: 1,
+    [ACTIVITY_TYPES.CALL]: 5,
+    [ACTIVITY_TYPES.MEETING]: 10,
+    [ACTIVITY_TYPES.LUNCH]: 15,
+    [ACTIVITY_TYPES.FFI]: 25,
+    [ACTIVITY_TYPES.API]: 50,
+};
+
 
 // Lead Pipeline Stages
 export const LEAD_STAGES = {
