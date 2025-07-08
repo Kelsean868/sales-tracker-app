@@ -1,25 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { X, MessageSquare, Phone, Users, CheckSquare, DollarSign } from 'lucide-react';
+import { X, List, Calendar, MessageSquare, Phone, Users, CheckSquare, DollarSign, User as UserIcon } from 'lucide-react';
 import { ACTIVITY_TYPES } from '../../constants';
 
 /**
  * LogActivityModal component
- * A modal for logging various types of sales activities.
+ * A modal for logging sales activities. Now supports a manager view.
+ * @param {object} props - Component props
+ * @param {boolean} props.isOpen - Controls if the modal is visible
+ * @param {function} props.onClose - Function to call when the modal should be closed
+ * @param {function} props.onLogActivity - Function to call to save the activity
+ * @param {object} [props.relatedTo] - The lead or client this activity is related to
+ * @param {object} props.currentUser - The currently logged-in user object
+ * @param {Array} [props.allUsers=[]] - Array of all users (for manager view)
+ * @returns {JSX.Element|null} The rendered modal or null if not open
  */
-const LogActivityModal = ({ isOpen, onClose, onLogActivity, relatedTo }) => {
+const LogActivityModal = ({ isOpen, onClose, onLogActivity, relatedTo, currentUser, allUsers = [] }) => {
+    const managementRoles = ['super_admin', 'admin', 'branch_manager', 'unit_manager'];
+    const isManagerView = currentUser && managementRoles.includes(currentUser.role);
+
     const [activityType, setActivityType] = useState(ACTIVITY_TYPES.NOTE);
     const [details, setDetails] = useState('');
     const [isScheduled, setIsScheduled] = useState(false);
     const [scheduledTimestamp, setScheduledTimestamp] = useState('');
+    // NEW: State to hold the ID of the user the activity is being logged for
+    const [targetUserId, setTargetUserId] = useState(currentUser?.uid);
 
+    // Reset state when the modal is closed or opened
     useEffect(() => {
         if (isOpen) {
             setActivityType(ACTIVITY_TYPES.NOTE);
             setDetails('');
             setIsScheduled(false);
             setScheduledTimestamp('');
+            // Default to logging for the current user unless changed
+            setTargetUserId(currentUser?.uid);
         }
-    }, [isOpen]);
+    }, [isOpen, currentUser]);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -34,7 +50,8 @@ const LogActivityModal = ({ isOpen, onClose, onLogActivity, relatedTo }) => {
             relatedTo: relatedTo ? { id: relatedTo.id, name: relatedTo.name } : null,
             isScheduled: isScheduled,
             scheduledTimestamp: isScheduled && scheduledTimestamp ? new Date(scheduledTimestamp).toISOString() : null,
-            timestamp: new Date().toISOString(), 
+            // Pass the target user's ID to the handler function
+            logForUserId: targetUserId,
         };
         
         onLogActivity(activityData);
@@ -75,29 +92,50 @@ const LogActivityModal = ({ isOpen, onClose, onLogActivity, relatedTo }) => {
                     </p>
                 )}
 
-                <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Activity Type</label>
-                    <div className="grid grid-cols-3 gap-2">
-                        {Object.values(ACTIVITY_TYPES).map(type => (
-                            <button
-                                key={type}
-                                type="button"
-                                onClick={() => setActivityType(type)}
-                                className={`flex items-center justify-center p-2 rounded-md text-sm transition-colors ${
-                                    activityType === type
-                                        ? 'bg-amber-500 text-gray-900 font-bold'
-                                        : 'bg-gray-700 hover:bg-gray-600'
-                                }`}
-                            >
-                                {activityIcons[type]}
-                                <span className="ml-2">{type.replace(/_/g, ' ')}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
                 <form onSubmit={handleSubmit}>
                     <div className="space-y-4">
+                        {/* NEW: Manager's user selector dropdown */}
+                        {isManagerView && (
+                            <div>
+                                <label htmlFor="targetUser" className="block text-sm font-medium text-gray-300 mb-2">Log Activity For:</label>
+                                <div className="relative">
+                                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                    <select
+                                        id="targetUser"
+                                        value={targetUserId}
+                                        onChange={(e) => setTargetUserId(e.target.value)}
+                                        className="w-full bg-gray-700 border-gray-600 rounded-md p-2 pl-10 appearance-none focus:ring-amber-500 focus:border-amber-500"
+                                    >
+                                        <option value={currentUser.uid}>Myself ({currentUser.name})</option>
+                                        {allUsers.map(user => (
+                                            <option key={user.id} value={user.id}>{user.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        )}
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Activity Type</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {Object.values(ACTIVITY_TYPES).map(type => (
+                                    <button
+                                        key={type}
+                                        type="button"
+                                        onClick={() => setActivityType(type)}
+                                        className={`flex items-center justify-center p-2 rounded-md text-sm transition-colors ${
+                                            activityType === type
+                                                ? 'bg-amber-500 text-gray-900 font-bold'
+                                                : 'bg-gray-700 hover:bg-gray-600'
+                                        }`}
+                                    >
+                                        {activityIcons[type]}
+                                        <span className="ml-2">{type.replace(/_/g, ' ')}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         <div>
                             <label htmlFor="details" className="block text-sm font-medium text-gray-300 mb-2">Details / Notes</label>
                             <textarea

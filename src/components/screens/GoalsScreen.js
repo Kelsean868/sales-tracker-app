@@ -1,47 +1,88 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Target, Edit, Save, CheckCircle, Trophy } from 'lucide-react';
+import { Edit, Save, Trophy, Users } from 'lucide-react'; // Removed unused Target icon
 import Card from '../ui/Card';
-import { ACTIVITY_TYPES } from '../../constants'; // FIX: Import the ACTIVITY_TYPES constant
+import { ACTIVITY_TYPES } from '../../constants';
 
 /**
  * GoalsScreen component
- * Allows users to set and track their sales goals.
- * @param {object} props - Component props
- * @param {string} props.userId - The ID of the current user
- * @param {Array} [props.activities=[]] - Array of user's activities
- * @returns {JSX.Element} The rendered goals screen
+ * Allows users to set and track their sales goals. Now supports a manager view.
  */
-const GoalsScreen = ({ userId, activities = [] }) => {
+const GoalsScreen = ({ userId, currentUser, allUsers = [], activities = [] }) => {
+    const managementRoles = ['super_admin', 'admin', 'branch_manager', 'unit_manager'];
+    const isManagerView = currentUser && managementRoles.includes(currentUser.role);
+    
+    const [selectedUserId, setSelectedUserId] = useState(userId);
+
+    useEffect(() => {
+        setSelectedUserId(userId);
+    }, [userId, isManagerView]);
+
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                <h1 className="text-2xl font-bold">My Goals</h1>
+            </div>
+
+            {isManagerView && (
+                <div className="relative">
+                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                    <select
+                        value={selectedUserId}
+                        onChange={(e) => setSelectedUserId(e.target.value)}
+                        className="w-full bg-gray-800 border-gray-700 rounded-md p-3 pl-10 appearance-none focus:ring-amber-500 focus:border-amber-500"
+                    >
+                        <option value={userId}>My Personal Goals</option>
+                        {allUsers.map(user => (
+                            <option key={user.id} value={user.id}>{user.name}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
+            <GoalTracker 
+                targetUserId={selectedUserId} 
+                activities={activities} 
+                isManagerViewing={isManagerView && selectedUserId !== userId}
+            />
+        </div>
+    );
+};
+
+
+const GoalTracker = ({ targetUserId, activities, isManagerViewing }) => {
     const [period, setPeriod] = useState('weekly');
     const [isEditing, setIsEditing] = useState(false);
     
-    // Default goals, can be customized
-    const defaultGoals = {
+    // Wrapped in useMemo to satisfy exhaustive-deps rule
+    const defaultGoals = useMemo(() => ({
         new_contacts: 10,
         appointments_booked: 5,
         ffi_conducted: 3,
         applications_submitted: 2,
         api: 5000,
-    };
+    }), []);
 
     const [goals, setGoals] = useState(defaultGoals);
 
-    // Load goals from localStorage when the component mounts
+    // Load goals from localStorage
     useEffect(() => {
+        if (!targetUserId) return;
         try {
-            const savedGoals = localStorage.getItem(`goals_${userId}`);
+            const savedGoals = localStorage.getItem(`goals_${targetUserId}`);
             if (savedGoals) {
                 setGoals(JSON.parse(savedGoals));
+            } else {
+                setGoals(defaultGoals);
             }
         } catch (error) {
             console.error("Failed to load goals from localStorage", error);
         }
-    }, [userId]);
+    }, [targetUserId, defaultGoals]); // FIX: Added defaultGoals to dependency array
 
-    // Save goals to localStorage whenever they change
     const handleSaveGoals = () => {
+        if (!targetUserId) return;
         try {
-            localStorage.setItem(`goals_${userId}`, JSON.stringify(goals));
+            localStorage.setItem(`goals_${targetUserId}`, JSON.stringify(goals));
             setIsEditing(false);
         } catch (error) {
             console.error("Failed to save goals to localStorage", error);
@@ -52,7 +93,6 @@ const GoalsScreen = ({ userId, activities = [] }) => {
         setGoals(prev => ({ ...prev, [key]: Number(value) || 0 }));
     };
 
-    // Calculate current progress based on activities
     const progress = useMemo(() => {
         const now = new Date();
         let startOfPeriod;
@@ -64,22 +104,19 @@ const GoalsScreen = ({ userId, activities = [] }) => {
             case 'monthly':
                 startOfPeriod = new Date(now.getFullYear(), now.getMonth(), 1);
                 break;
-            case 'quarterly':
-                const quarter = Math.floor(now.getMonth() / 3);
-                startOfPeriod = new Date(now.getFullYear(), quarter * 3, 1);
-                break;
             case 'weekly':
             default:
-                const day = now.getDay();
-                const diff = now.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-                startOfPeriod = new Date(now.setDate(diff));
+                const weeklyNow = new Date();
+                const day = weeklyNow.getDay();
+                const diff = weeklyNow.getDate() - day + (day === 0 ? -6 : 1);
+                startOfPeriod = new Date(weeklyNow.setDate(diff));
                 startOfPeriod.setHours(0, 0, 0, 0);
                 break;
         }
 
-        const relevantActivities = activities.filter(a => new Date(a.timestamp) >= startOfPeriod);
+        const userActivities = activities.filter(a => a.userId === targetUserId);
+        const relevantActivities = userActivities.filter(a => a.timestamp?.toDate() >= startOfPeriod);
 
-        // FIX: Use the imported ACTIVITY_TYPES constant
         return {
             new_contacts: relevantActivities.filter(a => a.summaryKey === 'new_contact').length,
             appointments_booked: relevantActivities.filter(a => a.summaryKey === 'appointment_booked').length,
@@ -87,34 +124,31 @@ const GoalsScreen = ({ userId, activities = [] }) => {
             applications_submitted: relevantActivities.filter(a => a.summaryKey === 'application_submitted').length,
             api: relevantActivities.filter(a => a.type === ACTIVITY_TYPES.API).reduce((sum, a) => sum + (a.api || 0), 0),
         };
-    }, [activities, period]);
+    }, [activities, period, targetUserId]);
 
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold">My Goals</h1>
-                {isEditing ? (
-                    <button onClick={handleSaveGoals} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md flex items-center"><Save className="w-4 h-4 mr-2"/>Save Goals</button>
-                ) : (
-                    <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center"><Edit className="w-4 h-4 mr-2"/>Edit Targets</button>
+                <div className="flex items-center bg-gray-800 rounded-lg p-1">
+                    <PeriodButton period="daily" activePeriod={period} setPeriod={setPeriod}>Daily</PeriodButton>
+                    <PeriodButton period="weekly" activePeriod={period} setPeriod={setPeriod}>Weekly</PeriodButton>
+                    <PeriodButton period="monthly" activePeriod={period} setPeriod={setPeriod}>Monthly</PeriodButton>
+                </div>
+                {!isManagerViewing && (
+                    isEditing ? (
+                        <button onClick={handleSaveGoals} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md flex items-center"><Save className="w-4 h-4 mr-2"/>Save Goals</button>
+                    ) : (
+                        <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center"><Edit className="w-4 h-4 mr-2"/>Edit Targets</button>
+                    )
                 )}
             </div>
             
-            {/* Period Selector */}
-            <div className="flex items-center bg-gray-800 rounded-lg p-1">
-                <PeriodButton period="daily" activePeriod={period} setPeriod={setPeriod}>Daily</PeriodButton>
-                <PeriodButton period="weekly" activePeriod={period} setPeriod={setPeriod}>Weekly</PeriodButton>
-                <PeriodButton period="monthly" activePeriod={period} setPeriod={setPeriod}>Monthly</PeriodButton>
-                <PeriodButton period="quarterly" activePeriod={period} setPeriod={setPeriod}>Quarterly</PeriodButton>
-            </div>
-
-            {/* Goals List */}
             <div className="space-y-4">
-                <GoalItem label="New Contacts" current={progress.new_contacts} target={goals.new_contacts} isEditing={isEditing} onChange={(val) => handleGoalChange('new_contacts', val)} />
-                <GoalItem label="Appointments Booked" current={progress.appointments_booked} target={goals.appointments_booked} isEditing={isEditing} onChange={(val) => handleGoalChange('appointments_booked', val)} />
-                <GoalItem label="FFI Conducted" current={progress.ffi_conducted} target={goals.ffi_conducted} isEditing={isEditing} onChange={(val) => handleGoalChange('ffi_conducted', val)} />
-                <GoalItem label="Applications Submitted" current={progress.applications_submitted} target={goals.applications_submitted} isEditing={isEditing} onChange={(val) => handleGoalChange('applications_submitted', val)} />
-                <GoalItem label="API" current={progress.api} target={goals.api} isEditing={isEditing} isCurrency onChange={(val) => handleGoalChange('api', val)} />
+                <GoalItem label="New Contacts" current={progress.new_contacts} target={goals.new_contacts} isEditing={isEditing && !isManagerViewing} onChange={(val) => handleGoalChange('new_contacts', val)} />
+                <GoalItem label="Appointments Booked" current={progress.appointments_booked} target={goals.appointments_booked} isEditing={isEditing && !isManagerViewing} onChange={(val) => handleGoalChange('appointments_booked', val)} />
+                <GoalItem label="FFI Conducted" current={progress.ffi_conducted} target={goals.ffi_conducted} isEditing={isEditing && !isManagerViewing} onChange={(val) => handleGoalChange('ffi_conducted', val)} />
+                <GoalItem label="Applications Submitted" current={progress.applications_submitted} target={goals.applications_submitted} isEditing={isEditing && !isManagerViewing} onChange={(val) => handleGoalChange('applications_submitted', val)} />
+                <GoalItem label="API" current={progress.api} target={goals.api} isEditing={isEditing && !isManagerViewing} isCurrency onChange={(val) => handleGoalChange('api', val)} />
             </div>
         </div>
     );
@@ -128,10 +162,9 @@ const GoalItem = ({ label, current, target, isEditing, isCurrency, onChange }) =
     const percentage = target > 0 ? Math.min((current / target) * 100, 100) : 0;
     const isAchieved = current >= target;
 
-    let barColor = 'bg-red-500';
+    let barColor = 'bg-blue-500';
     if (percentage > 75) barColor = 'bg-green-500';
     else if (percentage > 40) barColor = 'bg-yellow-500';
-    else if (percentage > 10) barColor = 'bg-blue-500';
 
     return (
         <Card>

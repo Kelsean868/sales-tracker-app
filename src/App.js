@@ -4,7 +4,8 @@ import {
     getAuth, 
     onAuthStateChanged, 
     createUserWithEmailAndPassword, 
-    signInWithEmailAndPassword 
+    signInWithEmailAndPassword,
+    signOut
 } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, collectionGroup, where } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
@@ -172,18 +173,34 @@ const AppContent = () => {
         let unsubscribes = [];
 
         if (managementRoles.includes(user.role)) {
-            const queries = {
-                leads: query(collectionGroup(db, 'leads')),
-                activities: query(collectionGroup(db, 'activities')),
-                clients: query(collectionGroup(db, 'clients')),
-                contacts: query(collectionGroup(db, 'contacts')),
-                allUsers: query(collection(db, 'users')),
-            };
-            unsubscribes.push(onSnapshot(queries.leads, (snapshot) => setLeads(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-            unsubscribes.push(onSnapshot(queries.activities, (snapshot) => setActivities(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-            unsubscribes.push(onSnapshot(queries.clients, (snapshot) => setClients(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-            unsubscribes.push(onSnapshot(queries.contacts, (snapshot) => setContacts(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-            unsubscribes.push(onSnapshot(queries.allUsers, (snapshot) => setAllUsers(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+            let leadsQuery, activitiesQuery, clientsQuery, contactsQuery;
+            
+            if (user.role === 'super_admin' || user.role === 'admin') {
+                leadsQuery = query(collectionGroup(db, 'leads'));
+                activitiesQuery = query(collectionGroup(db, 'activities'));
+                clientsQuery = query(collectionGroup(db, 'clients'));
+                contactsQuery = query(collectionGroup(db, 'contacts'));
+            } else if (user.role === 'branch_manager' && user.branchId) {
+                leadsQuery = query(collectionGroup(db, 'leads'), where('branchId', '==', user.branchId));
+                activitiesQuery = query(collectionGroup(db, 'activities'), where('branchId', '==', user.branchId));
+                clientsQuery = query(collectionGroup(db, 'clients'), where('branchId', '==', user.branchId));
+                contactsQuery = query(collectionGroup(db, 'contacts'), where('branchId', '==', user.branchId));
+            } else if (user.role === 'unit_manager' && user.unitId) {
+                leadsQuery = query(collectionGroup(db, 'leads'), where('unitId', '==', user.unitId));
+                activitiesQuery = query(collectionGroup(db, 'activities'), where('unitId', '==', user.unitId));
+                clientsQuery = query(collectionGroup(db, 'clients'), where('unitId', '==', user.unitId));
+                contactsQuery = query(collectionGroup(db, 'contacts'), where('unitId', '==', user.unitId));
+            } else {
+                leadsQuery = query(collection(db, 'users', user.uid, 'leads'));
+                activitiesQuery = query(collection(db, 'users', user.uid, 'activities'));
+                clientsQuery = query(collection(db, 'users', user.uid, 'clients'));
+                contactsQuery = query(collection(db, 'users', user.uid, 'contacts'));
+            }
+
+            unsubscribes.push(onSnapshot(leadsQuery, (snapshot) => setLeads(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+            unsubscribes.push(onSnapshot(activitiesQuery, (snapshot) => setActivities(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+            unsubscribes.push(onSnapshot(clientsQuery, (snapshot) => setClients(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+            unsubscribes.push(onSnapshot(contactsQuery, (snapshot) => setContacts(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
 
         } else {
             const userCollections = {
@@ -204,27 +221,13 @@ const AppContent = () => {
                     }
                 });
             });
-            unsubscribes.push(onSnapshot(query(collection(db, 'users')), (snapshot) => setAllUsers(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
         }
 
-        const managementCollections = {
-            teams: collection(db, 'teams'),
-            units: collection(db, 'units'),
-            branches: collection(db, 'branches'),
-        };
-        const mgmtUnsubscribes = Object.entries(managementCollections).map(([key, collectionRef]) => {
-            return onSnapshot(query(collectionRef), (snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                switch (key) {
-                    case 'teams': setTeams(data); break;
-                    case 'units': setUnits(data); break;
-                    case 'branches': setBranches(data); break;
-                    default: break;
-                }
-            });
-        });
+        unsubscribes.push(onSnapshot(query(collection(db, 'users')), (snapshot) => setAllUsers(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+        unsubscribes.push(onSnapshot(query(collection(db, 'teams')), (snapshot) => setTeams(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+        unsubscribes.push(onSnapshot(query(collection(db, 'units')), (snapshot) => setUnits(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+        unsubscribes.push(onSnapshot(query(collection(db, 'branches')), (snapshot) => setBranches(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
 
-        unsubscribes.push(...mgmtUnsubscribes);
         return () => unsubscribes.forEach(unsub => unsub());
 
     }, [userReady, user]);
@@ -248,17 +251,29 @@ const AppContent = () => {
     };
 
     const handleLogActivity = async (activityData) => {
-        if (!userId || !user) return;
+        const targetUserId = activityData.logForUserId;
+        if (!targetUserId) {
+            addToast('Could not determine user to log activity for.', 'error');
+            return;
+        }
+
+        const targetUser = allUsers.find(u => u.id === targetUserId);
+
         try {
-            const activitiesCollectionRef = collection(db, 'users', userId, 'activities');
+            const activitiesCollectionRef = collection(db, 'users', targetUserId, 'activities');
             await addDoc(activitiesCollectionRef, {
-                ...activityData,
+                type: activityData.type,
+                details: activityData.details,
+                relatedTo: activityData.relatedTo,
+                isScheduled: activityData.isScheduled,
+                scheduledTimestamp: activityData.scheduledTimestamp,
                 timestamp: serverTimestamp(),
-                userId: userId,
+                userId: targetUserId,
                 points: ACTIVITY_POINTS[activityData.type] || 0,
-                teamId: user.teamId || null,
-                unitId: user.unitId || null,
-                branchId: user.branchId || null,
+                teamId: targetUser?.teamId || null,
+                unitId: targetUser?.unitId || null,
+                branchId: targetUser?.branchId || null,
+                loggedBy: userId,
             });
             addToast('Activity logged successfully!', 'success');
         } catch (error) {
@@ -289,6 +304,13 @@ const AppContent = () => {
         }
     };
 
+    const handleLogout = () => {
+        signOut(auth).catch(error => {
+            console.error("Error signing out:", error);
+            addToast("Failed to sign out.", 'error');
+        });
+    };
+
     const handleOpenEditUserModal = (userToEdit) => {
         setUserToEdit(userToEdit);
         setEditUserModalOpen(true);
@@ -311,8 +333,8 @@ const AppContent = () => {
             case 'AGENDA': return <AgendaScreen activities={activities} />;
             case 'CONTACTS': return <ContactsScreen contacts={contacts} />;
             case 'LEADERBOARD': return <LeaderboardScreen allUsers={allUsers} activities={activities} />;
-            case 'REPORTS': return <ReportsScreen activities={activities} leads={leads} />;
-            case 'GOALS': return <GoalsScreen activities={activities} userId={userId} />;
+            case 'REPORTS': return <ReportsScreen activities={activities} leads={leads} allUsers={allUsers} currentUser={user} />;
+            case 'GOALS': return <GoalsScreen activities={activities} userId={userId} currentUser={user} allUsers={allUsers} />;
             default: return <Dashboard activities={activities} leads={leads} currentUser={user} />;
         }
     };
@@ -333,7 +355,8 @@ const AppContent = () => {
         <div className="bg-gray-900 text-white min-h-screen font-sans">
             <TopHeader user={user} onProfileClick={() => setProfileOpen(true)} />
             <main className="p-4 pb-20">{renderActiveScreen()}</main>
-            <SpeedDial onAddLead={() => setAddLeadModalOpen(true)} onLogActivity={() => setLogActivityModalOpen(true)} />
+            {/* FIX: Corrected prop name from onLogActivity to onAddActivity */}
+            <SpeedDial onAddLead={() => setAddLeadModalOpen(true)} onAddActivity={() => setLogActivityModalOpen(true)} />
             <BottomNav activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
 
             <ProfileScreen 
@@ -347,6 +370,7 @@ const AppContent = () => {
                 onOpenAddUserModal={() => setAddUserModalOpen(true)}
                 onOpenEditUserModal={handleOpenEditUserModal}
                 addToast={addToast}
+                onLogout={handleLogout}
             />
             <AddLeadModal isOpen={isAddLeadModalOpen} onClose={() => setAddLeadModalOpen(false)} onAddLead={handleAddLead} />
             <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setAddUserModalOpen(false)} onAddUser={handleCreateUser} />
@@ -361,7 +385,14 @@ const AppContent = () => {
             />
             <LeadDetailModal isOpen={isLeadDetailModalOpen} onClose={() => {setLeadDetailModalOpen(false); setSelectedLead(null);}} lead={selectedLead} />
             <ClientModal isOpen={isClientModalOpen} onClose={() => setClientModalOpen(false)} client={selectedClient} />
-            <LogActivityModal isOpen={isLogActivityModalOpen} onClose={() => setLogActivityModalOpen(false)} relatedTo={activityTarget} onLogActivity={handleLogActivity}/>
+            <LogActivityModal 
+                isOpen={isLogActivityModalOpen} 
+                onClose={() => setLogActivityModalOpen(false)} 
+                relatedTo={activityTarget} 
+                onLogActivity={handleLogActivity}
+                currentUser={user}
+                allUsers={allUsers}
+            />
             <PolicyModal isOpen={isPolicyModalOpen} onClose={() => setPolicyModalOpen(false)} policy={selectedPolicy} clientId={selectedClient?.id} />
         </div>
     );

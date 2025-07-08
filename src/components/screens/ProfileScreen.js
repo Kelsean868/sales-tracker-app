@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { doc, updateDoc, collection, onSnapshot, query, addDoc, serverTimestamp } from 'firebase/firestore'; // FIX: Imported serverTimestamp
+import { doc, updateDoc, collection, onSnapshot, query, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase } from 'lucide-react';
+import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase, LogOut, User } from 'lucide-react'; // FIX: Added User icon
 import { USER_ROLES } from '../../constants';
 
-// Note: The modals are now rendered in App.js, so we don't need to import them here.
-
-const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storage, onOpenAddUserModal, onOpenEditUserModal, addToast }) => {
+const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storage, onOpenAddUserModal, onOpenEditUserModal, addToast, onLogout }) => {
     const [activeTab, setActiveTab] = useState('profile');
     const [isEditing, setIsEditing] = useState(false);
     const [profileData, setProfileData] = useState({});
@@ -15,7 +13,6 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef(null);
     
-    // Management State
     const [allUsers, setAllUsers] = useState([]);
     const [teams, setTeams] = useState([]);
     const [units, setUnits] = useState([]);
@@ -46,7 +43,6 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
         ...user?.settings,
     }), [user]);
 
-    // This effect now sets up REAL-TIME listeners for management data
     useEffect(() => {
         if (!isOpen || !canManage || !db) {
             return; 
@@ -371,13 +367,18 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
                     </div>
                 </header>
                 <div className="flex-grow flex overflow-hidden">
-                    <nav className="w-1/4 border-r border-gray-700 p-4">
-                        <ul className="space-y-2">
-                            <li><button onClick={() => setActiveTab('profile')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'profile' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}>Profile</button></li>
+                    <nav className="w-1/4 border-r border-gray-700 p-4 flex flex-col">
+                        <ul className="space-y-2 flex-grow">
+                            <li><button onClick={() => setActiveTab('profile')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'profile' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><User className="w-5 h-5 mr-2"/>Profile</button></li>
                             <li><button onClick={() => setActiveTab('account')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'account' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><ShieldCheck className="w-5 h-5 mr-2"/>Account</button></li>
                             <li><button onClick={() => setActiveTab('settings')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'settings' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}>Settings</button></li>
                             {canManage && <li><button onClick={() => setActiveTab('management')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'management' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><Briefcase className="w-5 h-5 mr-2"/>Management</button></li>}
                         </ul>
+                        <div>
+                            <button onClick={onLogout} className="w-full mt-4 text-left p-2 rounded-md flex items-center text-red-400 hover:bg-red-500/20">
+                                <LogOut className="w-5 h-5 mr-2"/> Logout
+                            </button>
+                        </div>
                     </nav>
                     <main className="w-3/4 p-6 overflow-y-auto">
                         {activeTab === 'profile' && renderProfileTab()}
