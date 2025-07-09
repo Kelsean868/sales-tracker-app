@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Phone, Mail, Building, UserPlus } from 'lucide-react';
+import { Phone, Mail, Building, UserPlus, Calendar } from 'lucide-react';
 import Card from '../ui/Card';
 
 const ContactsScreen = ({ contacts }) => {
@@ -46,6 +46,12 @@ const ContactsScreen = ({ contacts }) => {
                                     <div className="flex items-center mt-2 text-gray-400">
                                         <Mail size={16} className="mr-2" />
                                         <a href={`mailto:${contact.email}`} className="hover:text-amber-400">{contact.email}</a>
+                                    </div>
+                                )}
+                                {contact.dob && (
+                                     <div className="flex items-center mt-2 text-gray-400">
+                                        <Calendar size={16} className="mr-2" />
+                                        <span>{new Date(contact.dob).toLocaleDateString()}</span>
                                     </div>
                                 )}
                             </div>

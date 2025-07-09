@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { Search, X, Loader, User, Briefcase, Shield } from 'lucide-react';
+import { Search, X, Loader, User, Briefcase, Shield, Clock } from 'lucide-react';
 
 // A simple debounce hook to prevent calling the function on every keystroke
 const useDebounce = (value, delay) => {
@@ -16,14 +16,34 @@ const useDebounce = (value, delay) => {
     return debouncedValue;
 };
 
-const UniversalSearchModal = ({ isOpen, onClose }) => {
+const UniversalSearchModal = ({ isOpen, onClose, onSelectLead, onSelectClient, onSelectPolicy }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [results, setResults] = useState({ leads: [], clients: [], policies: [] });
     const [isLoading, setIsLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('leads');
+    const [recentSearches, setRecentSearches] = useState([]);
 
     const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
+    // Load recent searches from localStorage when the modal opens
+    useEffect(() => {
+        if (isOpen) {
+            const storedSearches = localStorage.getItem('recentSearches');
+            if (storedSearches) {
+                setRecentSearches(JSON.parse(storedSearches));
+            }
+        }
+    }, [isOpen]);
+
+    // Stable function to add a new search term using the callback form of setState
+    const addRecentSearch = useCallback((term) => {
+        setRecentSearches(prevSearches => {
+            const updatedSearches = [term, ...prevSearches.filter(t => t !== term)].slice(0, 5);
+            localStorage.setItem('recentSearches', JSON.stringify(updatedSearches));
+            return updatedSearches;
+        });
+    }, []);
+    
     // Memoized function to call the cloud function
     const performSearch = useCallback(async (term) => {
         if (term.length < 2) {
@@ -31,6 +51,7 @@ const UniversalSearchModal = ({ isOpen, onClose }) => {
             return;
         }
         setIsLoading(true);
+        addRecentSearch(term); // This is now a stable dependency
         try {
             const functions = getFunctions();
             const universalSearch = httpsCallable(functions, 'universalSearch');
@@ -38,11 +59,10 @@ const UniversalSearchModal = ({ isOpen, onClose }) => {
             setResults(response.data);
         } catch (error) {
             console.error("Error performing search:", error);
-            // You might want to show a toast notification to the user here
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [addRecentSearch]); // The dependency array is now stable
 
     // Effect to trigger search when the debounced search term changes
     useEffect(() => {
@@ -64,7 +84,33 @@ const UniversalSearchModal = ({ isOpen, onClose }) => {
 
     if (!isOpen) return null;
 
-    // Renders the results based on the active tab
+    const handleRecentSearchClick = (term) => {
+        setSearchTerm(term);
+    };
+    
+    const renderRecentSearches = () => {
+        if (recentSearches.length === 0) {
+            return <div className="text-center p-8 text-gray-500">No recent searches.</div>;
+        }
+        return (
+            <div>
+                <h3 className="text-sm font-semibold text-gray-400 px-3 mb-2">Recent Searches</h3>
+                <ul className="space-y-1">
+                    {recentSearches.map((term, index) => (
+                        <li 
+                            key={index} 
+                            onClick={() => handleRecentSearchClick(term)}
+                            className="p-3 hover:bg-gray-800 rounded-lg cursor-pointer flex items-center"
+                        >
+                            <Clock className="h-4 w-4 mr-3 text-gray-500" />
+                            <span className="text-white">{term}</span>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+        );
+    };
+
     const renderResults = () => {
         const data = results[activeTab] || [];
         if (isLoading) {
@@ -74,17 +120,22 @@ const UniversalSearchModal = ({ isOpen, onClose }) => {
                 </div>
             );
         }
-        if (searchTerm && data.length === 0) {
-            return <div className="text-center p-8 text-gray-500">No results found for "{searchTerm}".</div>;
+        if (data.length === 0 && debouncedSearchTerm) {
+            return <div className="text-center p-8 text-gray-500">No results found for "{debouncedSearchTerm}".</div>;
         }
-        if (data.length === 0) {
-            return <div className="text-center p-8 text-gray-500">Start typing to search.</div>;
-        }
-
         return (
             <ul className="space-y-2">
                 {data.map((item) => (
-                    <li key={item.id} className="p-3 hover:bg-gray-800 rounded-lg cursor-pointer">
+                    <li 
+                        key={item.id} 
+                        className="p-3 hover:bg-gray-800 rounded-lg cursor-pointer"
+                        onClick={() => {
+                            if (activeTab === 'leads') onSelectLead(item);
+                            if (activeTab === 'clients') onSelectClient(item);
+                            if (activeTab === 'policies') onSelectPolicy(item);
+                            onClose();
+                        }}
+                    >
                         {activeTab === 'leads' && (
                             <div className="flex items-center">
                                 <User className="h-5 w-5 mr-3 text-gray-400" />
@@ -139,14 +190,22 @@ const UniversalSearchModal = ({ isOpen, onClose }) => {
                 </div>
 
                 <div className="p-4">
-                    <div className="flex border-b border-gray-700 mb-4">
-                        <button onClick={() => setActiveTab('leads')} className={`px-4 py-2 text-sm sm:text-base ${activeTab === 'leads' ? 'border-b-2 border-amber-500 text-amber-400 font-semibold' : 'text-gray-400'}`}>Leads ({results.leads.length})</button>
-                        <button onClick={() => setActiveTab('clients')} className={`px-4 py-2 text-sm sm:text-base ${activeTab === 'clients' ? 'border-b-2 border-amber-500 text-amber-400 font-semibold' : 'text-gray-400'}`}>Clients ({results.clients.length})</button>
-                        <button onClick={() => setActiveTab('policies')} className={`px-4 py-2 text-sm sm:text-base ${activeTab === 'policies' ? 'border-b-2 border-amber-500 text-amber-400 font-semibold' : 'text-gray-400'}`}>Policies ({results.policies.length})</button>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto">
-                        {renderResults()}
-                    </div>
+                    {searchTerm ? (
+                        <>
+                            <div className="flex border-b border-gray-700 mb-4">
+                                <button onClick={() => setActiveTab('leads')} className={`px-4 py-2 text-sm sm:text-base ${activeTab === 'leads' ? 'border-b-2 border-amber-500 text-amber-400 font-semibold' : 'text-gray-400'}`}>Leads ({results.leads.length})</button>
+                                <button onClick={() => setActiveTab('clients')} className={`px-4 py-2 text-sm sm:text-base ${activeTab === 'clients' ? 'border-b-2 border-amber-500 text-amber-400 font-semibold' : 'text-gray-400'}`}>Clients ({results.clients.length})</button>
+                                <button onClick={() => setActiveTab('policies')} className={`px-4 py-2 text-sm sm:text-base ${activeTab === 'policies' ? 'border-b-2 border-amber-500 text-amber-400 font-semibold' : 'text-gray-400'}`}>Policies ({results.policies.length})</button>
+                            </div>
+                            <div className="max-h-96 overflow-y-auto">
+                                {renderResults()}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="max-h-96 overflow-y-auto">
+                            {renderRecentSearches()}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

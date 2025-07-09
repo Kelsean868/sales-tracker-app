@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { doc, updateDoc, collection, onSnapshot, query, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase, LogOut, User } from 'lucide-react'; // FIX: Added User icon
+import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase, LogOut, User, GitCompare } from 'lucide-react';
 import { USER_ROLES } from '../../constants';
 
 const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storage, onOpenAddUserModal, onOpenEditUserModal, addToast, onLogout }) => {
@@ -35,6 +35,7 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
     const initialSettingsState = useMemo(() => ({
         theme: 'dark',
         defaultLeadsView: 'pipeline',
+        ageCalculation: 'ageNextBirthday',
         notifications: {
             dailySummaryEmail: true,
             upcomingFollowupPush: true,
@@ -230,29 +231,25 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
     const renderSettingsTab = () => (
         <div className="space-y-6">
             <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-b border-gray-700 pb-2">General</h3>
+                <h3 className="text-lg font-semibold border-b border-gray-700 pb-2">Preferences</h3>
                 <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Theme</label>
-                    <select name="theme" value={settings.theme || 'dark'} onChange={handleSettingsChange} disabled={!isEditing} className="w-full bg-gray-700 text-white p-2 rounded-md disabled:opacity-50">
-                        <option value="dark">Dark</option>
-                        <option value="light">Light</option>
-                    </select>
-                </div>
-                 <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Default Leads View</label>
-                    <select name="defaultLeadsView" value={settings.defaultLeadsView || 'pipeline'} onChange={handleSettingsChange} disabled={!isEditing} className="w-full bg-gray-700 text-white p-2 rounded-md disabled:opacity-50">
-                        <option value="pipeline">Pipeline</option>
-                        <option value="list">List</option>
-                    </select>
-                </div>
-                 <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Default Report Range</label>
-                    <select name="defaultReportRange" value={settings.defaultReportRange || 'weekly'} onChange={handleSettingsChange} disabled={!isEditing} className="w-full bg-gray-700 text-white p-2 rounded-md disabled:opacity-50">
-                        <option value="weekly">This Week</option>
-                        <option value="monthly">This Month</option>
-                        <option value="quarterly">This Quarter</option>
-                        <option value="ytd">Year to Date</option>
-                    </select>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">Age Display</label>
+                    <div className="flex items-center space-x-2 bg-gray-700 p-1 rounded-lg">
+                        <button 
+                            onClick={() => handleSettingsChange({target: {name: 'ageCalculation', value: 'ageNextBirthday'}})}
+                            disabled={!isEditing}
+                            className={`w-1/2 p-2 rounded-md text-sm font-semibold transition-colors ${settings.ageCalculation === 'ageNextBirthday' ? 'bg-amber-500 text-gray-900' : 'text-white'}`}
+                        >
+                            Age Next Birthday
+                        </button>
+                         <button 
+                            onClick={() => handleSettingsChange({target: {name: 'ageCalculation', value: 'currentAge'}})}
+                            disabled={!isEditing}
+                            className={`w-1/2 p-2 rounded-md text-sm font-semibold transition-colors ${settings.ageCalculation === 'currentAge' ? 'bg-amber-500 text-gray-900' : 'text-white'}`}
+                        >
+                            Current Age
+                        </button>
+                    </div>
                 </div>
             </div>
             <div className="space-y-4">
@@ -371,7 +368,7 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
                         <ul className="space-y-2 flex-grow">
                             <li><button onClick={() => setActiveTab('profile')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'profile' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><User className="w-5 h-5 mr-2"/>Profile</button></li>
                             <li><button onClick={() => setActiveTab('account')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'account' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><ShieldCheck className="w-5 h-5 mr-2"/>Account</button></li>
-                            <li><button onClick={() => setActiveTab('settings')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'settings' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}>Settings</button></li>
+                            <li><button onClick={() => setActiveTab('settings')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'settings' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><GitCompare className="w-5 h-5 mr-2"/>Settings</button></li>
                             {canManage && <li><button onClick={() => setActiveTab('management')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'management' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><Briefcase className="w-5 h-5 mr-2"/>Management</button></li>}
                         </ul>
                         <div>

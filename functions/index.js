@@ -66,13 +66,19 @@ exports.editUser = onCall(async (request) => {
 // --- Goal Update Functions ---
 exports.updateGoalOnActivityLog = onDocumentCreated("users/{userId}/activities/{activityId}", async (event) => {
   const snap = event.data;
-  if (!snap) return;
+  if (!snap) {
+    return;
+  }
   const activity = snap.data();
   const {userId, type, points = 0} = activity;
-  if (!userId) return null;
+  if (!userId) {
+    return null;
+  }
   const goalsRef = admin.firestore().collection("goals").where("userId", "==", userId).where("status", "==", "active");
   const goalsSnapshot = await goalsRef.get();
-  if (goalsSnapshot.empty) return null;
+  if (goalsSnapshot.empty) {
+    return null;
+  }
   const batch = admin.firestore().batch();
   goalsSnapshot.forEach((doc) => {
     const progress = doc.data().progress || {};
@@ -85,13 +91,19 @@ exports.updateGoalOnActivityLog = onDocumentCreated("users/{userId}/activities/{
 
 exports.updateGoalOnLeadAdd = onDocumentCreated("users/{userId}/leads/{leadId}", async (event) => {
   const snap = event.data;
-  if (!snap) return;
+  if (!snap) {
+    return;
+  }
   const lead = snap.data();
   const userId = lead.userId;
-  if (!userId) return null;
+  if (!userId) {
+    return null;
+  }
   const goalsRef = admin.firestore().collection("goals").where("userId", "==", userId).where("status", "==", "active");
   const goalsSnapshot = await goalsRef.get();
-  if (goalsSnapshot.empty) return null;
+  if (goalsSnapshot.empty) {
+    return null;
+  }
   const batch = admin.firestore().batch();
   goalsSnapshot.forEach((doc) => {
     const progress = doc.data().progress || {};
@@ -103,13 +115,19 @@ exports.updateGoalOnLeadAdd = onDocumentCreated("users/{userId}/leads/{leadId}",
 
 exports.updateGoalOnPolicyAdd = onDocumentCreated("users/{userId}/policies/{policyId}", async (event) => {
   const snap = event.data;
-  if (!snap) return;
+  if (!snap) {
+    return;
+  }
   const policy = snap.data();
   const {agentId: userId, premium = 0} = policy;
-  if (!userId) return null;
+  if (!userId) {
+    return null;
+  }
   const goalsRef = admin.firestore().collection("goals").where("userId", "==", userId).where("status", "==", "active");
   const goalsSnapshot = await goalsRef.get();
-  if (goalsSnapshot.empty) return null;
+  if (goalsSnapshot.empty) {
+    return null;
+  }
   const batch = admin.firestore().batch();
   goalsSnapshot.forEach((doc) => {
     const progress = doc.data().progress || {};
@@ -140,6 +158,61 @@ exports.processNewClient = onDocumentCreated("users/{userId}/clients/{clientId}"
   }
   return null;
 });
+
+// --- Lead Conversion Function ---
+exports.convertToClient = onCall(async (request) => {
+  const {data, auth} = request;
+  if (!auth) {
+    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+
+  const {leadId, userId} = data;
+  if (!leadId || !userId) {
+    throw new functions.https.HttpsError(
+        "invalid-argument",
+        "The function must be called with a 'leadId' and 'userId'.",
+    );
+  }
+
+  const db = admin.firestore();
+  const leadRef = db.collection("users").doc(userId).collection("leads").doc(leadId);
+  const leadDoc = await leadRef.get();
+
+  if (!leadDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Lead not found.");
+  }
+
+  const leadData = leadDoc.data();
+
+  if (leadData.status === "Converted") {
+    throw new functions.https.HttpsError("failed-precondition", "This lead has already been converted.");
+  }
+
+  const clientData = {
+    name: leadData.name,
+    email: leadData.email,
+    phone: leadData.phone,
+    address: leadData.address || "",
+    dob: leadData.dob || null,
+    userId: leadData.userId,
+    teamId: leadData.teamId,
+    unitId: leadData.unitId,
+    branchId: leadData.branchId,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    convertedFromLead: leadId,
+  };
+
+  try {
+    const clientRef = await db.collection("users").doc(userId).collection("clients").add(clientData);
+    await leadRef.update({status: "Converted", convertedToClientId: clientRef.id});
+
+    return {result: `Successfully converted lead to client with ID: ${clientRef.id}`};
+  } catch (error) {
+    console.error("Error converting lead to client:", error);
+    throw new functions.https.HttpsError("internal", "Could not convert lead to client.", error);
+  }
+});
+
 
 // --- Search Function ---
 exports.universalSearch = onCall(async (request) => {
@@ -214,7 +287,10 @@ exports.getAdminDashboardData = onCall(async (request) => {
     throw new functions.https.HttpsError("permission-denied", "You must be a super admin to call this function.");
   }
   const db = admin.firestore();
-  const collectionsToFetch = ["leads", "clients", "activities", "contacts", "users", "teams", "units", "branches"];
+  const collectionsToFetch = [
+    "leads", "clients", "activities", "contacts", "users",
+    "teams", "units", "branches", "policies",
+  ];
   const promises = collectionsToFetch.map((col) => db.collectionGroup(col).get());
   const [
     leadsSnapshot,
@@ -225,6 +301,7 @@ exports.getAdminDashboardData = onCall(async (request) => {
     teamsSnapshot,
     unitsSnapshot,
     branchesSnapshot,
+    policiesSnapshot,
   ] = await Promise.all(promises);
   const extractData = (snapshot) => snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()}));
   return {
@@ -236,5 +313,6 @@ exports.getAdminDashboardData = onCall(async (request) => {
     teams: extractData(teamsSnapshot),
     units: extractData(unitsSnapshot),
     branches: extractData(branchesSnapshot),
+    policies: extractData(policiesSnapshot),
   };
 });

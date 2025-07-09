@@ -1,119 +1,157 @@
 import React, { useState, useEffect } from 'react';
-import { X, Shield, Calendar, DollarSign, Hash, Edit3 } from 'lucide-react';
+import { X, Shield, Calendar, DollarSign, Hash } from 'lucide-react';
+import RoleSelector from './RoleSelector';
 
-/**
- * PolicyModal component
- * A modal for adding or editing an insurance policy.
- * @param {object} props - Component props
- * @param {boolean} props.isOpen - Controls if the modal is visible
- * @param {function} props.onClose - Function to call when the modal should be closed
- * @param {function} props.onSave - Function to call to save the policy data
- * @param {object} [props.policy] - The policy object to edit. If null, it's in 'add' mode.
- * @param {string} props.clientId - The ID of the client this policy belongs to
- * @returns {JSX.Element|null} The rendered modal or null if not open
- */
-const PolicyModal = ({ isOpen, onClose, onSave, policy, clientId }) => {
-    const isEditMode = Boolean(policy);
+const PolicyModal = ({ isOpen, onClose, onAddPolicy, policy, client, clientId, contacts, onAddNewPerson, ageCalculationType = 'ageNextBirthday' }) => {
+    const isEditMode = Boolean(policy && policy.id);
 
     const [policyData, setPolicyData] = useState({
         policyNumber: '',
         type: '',
         premium: '',
-        startDate: '',
+        premiumFrequency: 'monthly',
+        inforcedDate: '',
+        maturityDate: '',
         status: 'active',
+        owner: null,
+        insured: null,
+        payor: null,
+        beneficiary: 'Estate',
+        ageAtIssue: null,
     });
 
-    // When the modal opens or the policy prop changes, update the form state
     useEffect(() => {
         if (isOpen) {
+            const formatDateForInput = (dateString) => {
+                if (!dateString) return '';
+                try {
+                    return new Date(dateString).toISOString().slice(0, 10);
+                } catch (e) { return ''; }
+            };
+
+            const personInfo = client ? { name: client.name, id: client.id, dob: client.dob } : null;
+
             if (isEditMode) {
                 setPolicyData({
                     policyNumber: policy.policyNumber || '',
                     type: policy.type || '',
                     premium: policy.premium || '',
-                    // Format date for the datetime-local input
-                    startDate: policy.startDate ? new Date(policy.startDate).toISOString().slice(0, 16) : '',
+                    premiumFrequency: policy.premiumFrequency || 'monthly',
+                    inforcedDate: formatDateForInput(policy.inforcedDate),
+                    maturityDate: formatDateForInput(policy.maturityDate),
                     status: policy.status || 'active',
+                    owner: policy.owner || personInfo,
+                    insured: policy.insured || personInfo,
+                    payor: policy.payor || personInfo,
+                    beneficiary: policy.beneficiary || 'Estate',
+                    ageAtIssue: policy.ageAtIssue || null,
                 });
             } else {
-                // Reset form for adding a new policy
-                setPolicyData({ policyNumber: '', type: '', premium: '', startDate: '', status: 'active' });
+                setPolicyData({ 
+                    policyNumber: '', type: '', premium: '', 
+                    premiumFrequency: 'monthly', inforcedDate: '', 
+                    maturityDate: '', status: 'active',
+                    owner: personInfo,
+                    insured: personInfo,
+                    payor: personInfo,
+                    beneficiary: 'Estate',
+                    ageAtIssue: null,
+                });
             }
         }
-    }, [isOpen, policy, isEditMode]);
+    }, [isOpen, policy, isEditMode, client]);
 
-    // Handles changes in form inputs
+    useEffect(() => {
+        if (policyData.insured?.dob) {
+            const birthDate = new Date(policyData.insured.dob);
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            
+            const finalAge = ageCalculationType === 'ageNextBirthday' ? age + 1 : age;
+            setPolicyData(prev => ({...prev, ageAtIssue: finalAge}));
+        } else {
+            setPolicyData(prev => ({...prev, ageAtIssue: null}));
+        }
+    }, [policyData.insured, ageCalculationType]);
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setPolicyData(prev => ({ ...prev, [name]: value }));
     };
 
-    // Handles form submission
+    const handleRoleSelect = (role, person) => {
+        setPolicyData(prev => ({ ...prev, [role]: person }));
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         const finalPolicyData = {
             ...policyData,
-            clientId: clientId, // Ensure the client ID is attached
-            // Convert local datetime back to a simple ISO string or timestamp for storage
-            startDate: policyData.startDate ? new Date(policyData.startDate).toISOString() : null,
+            clientId: clientId,
+            clientName: client.name,
+            inforcedDate: policyData.inforcedDate ? new Date(policyData.inforcedDate).toISOString() : null,
+            maturityDate: policyData.maturityDate ? new Date(policyData.maturityDate).toISOString() : null,
         };
-        onSave(finalPolicyData);
-        onClose();
+        if (isEditMode) {
+            finalPolicyData.id = policy.id;
+        }
+        onAddPolicy(finalPolicyData);
     };
 
-    if (!isOpen) {
-        return null;
-    }
+    if (!isOpen) return null;
 
     return (
-        <div
-            className="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-sm flex justify-center items-center z-50"
-            onClick={onClose}
-        >
-            <div
-                className="bg-gray-800 text-white rounded-xl shadow-2xl p-8 w-full max-w-lg transform transition-all"
-                onClick={e => e.stopPropagation()}
-            >
-                {/* Modal Header */}
-                <div className="flex justify-between items-center mb-6">
+        <div className="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-sm flex justify-center items-center z-50" onClick={onClose}>
+            <div className="bg-gray-800 text-white rounded-xl shadow-2xl p-8 w-full max-w-2xl transform transition-all max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6 sticky top-0 bg-gray-800 py-4 z-10">
                     <h2 className="text-2xl font-bold text-amber-400">
-                        {isEditMode ? 'Edit Policy' : 'Add New Policy'}
+                        {isEditMode ? `Edit Policy #${policy.policyNumber}` : 'Add New Policy'}
                     </h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white">
-                        <X size={24} />
-                    </button>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>
                 </div>
 
-                {/* Policy Form */}
                 <form onSubmit={handleSubmit}>
                     <div className="space-y-4">
                         <InputWithIcon icon={<Hash />} name="policyNumber" placeholder="Policy Number" value={policyData.policyNumber} onChange={handleChange} required />
                         <InputWithIcon icon={<Shield />} name="type" placeholder="Policy Type (e.g., Life, Health)" value={policyData.type} onChange={handleChange} required />
                         <InputWithIcon icon={<DollarSign />} name="premium" placeholder="Premium Amount" value={policyData.premium} onChange={handleChange} type="number" required />
-                        <InputWithIcon icon={<Calendar />} name="startDate" placeholder="Start Date" value={policyData.startDate} onChange={handleChange} type="datetime-local" required />
                         
-                        <div>
-                            <label htmlFor="status" className="block text-sm font-medium text-gray-400 mb-1">Status</label>
-                            <select
-                                id="status"
-                                name="status"
-                                value={policyData.status}
-                                onChange={handleChange}
-                                className="w-full bg-gray-700 border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500"
-                            >
-                                <option value="active">Active</option>
-                                <option value="lapsed">Lapsed</option>
-                                <option value="cancelled">Cancelled</option>
-                                <option value="pending">Pending</option>
-                            </select>
+                        <div className="grid grid-cols-2 gap-4">
+                            <SelectInput label="Premium Frequency" name="premiumFrequency" value={policyData.premiumFrequency} onChange={handleChange} options={['monthly', 'quarterly', 'semi-annually', 'annually']} />
+                            <SelectInput label="Status" name="status" value={policyData.status} onChange={handleChange} options={['active', 'lapsed', 'cancelled', 'pending']} />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <InputWithIcon icon={<Calendar />} name="inforcedDate" label="Inforced Date" value={policyData.inforcedDate} onChange={handleChange} type="date" required />
+                            <InputWithIcon icon={<Calendar />} name="maturityDate" label="Maturity Date" value={policyData.maturityDate} onChange={handleChange} type="date" />
+                        </div>
+                        
+                        {policyData.ageAtIssue !== null && (
+                            <div className="p-3 bg-gray-700/50 rounded-md text-center">
+                                <p className="text-gray-300">
+                                    {ageCalculationType === 'ageNextBirthday' ? "Age Next Birthday" : "Current Age"} at Issue: 
+                                    <span className="font-bold text-amber-400"> {policyData.ageAtIssue}</span>
+                                </p>
+                            </div>
+                        )}
+
+                        <div className="pt-4 border-t border-gray-700">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-3">Policy Roles</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                               <RoleSelector label="Owner" value={policyData.owner} onSelect={(p) => handleRoleSelect('owner', p)} contacts={contacts} onAddNew={onAddNewPerson} />
+                               <RoleSelector label="Insured" value={policyData.insured} onSelect={(p) => handleRoleSelect('insured', p)} contacts={contacts} onAddNew={onAddNewPerson} />
+                               <RoleSelector label="Payor" value={policyData.payor} onSelect={(p) => handleRoleSelect('payor', p)} contacts={contacts} onAddNew={onAddNewPerson} />
+                               <RoleSelector label="Beneficiary" value={policyData.beneficiary} onSelect={(p) => handleRoleSelect('beneficiary', p)} contacts={contacts} onAddNew={onAddNewPerson} isBeneficiary={true} />
+                            </div>
                         </div>
                     </div>
 
-                    {/* Form Actions */}
                     <div className="mt-8 flex justify-end space-x-4">
-                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500">
-                            Cancel
-                        </button>
+                        <button type="button" onClick={onClose} className="px-6 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500">Cancel</button>
                         <button type="submit" className="px-6 py-2 rounded-md text-gray-900 font-semibold bg-amber-500 hover:bg-amber-400">
                             {isEditMode ? 'Save Changes' : 'Add Policy'}
                         </button>
@@ -124,15 +162,22 @@ const PolicyModal = ({ isOpen, onClose, onSave, policy, clientId }) => {
     );
 };
 
-// Reusable Input with Icon sub-component
-const InputWithIcon = ({ icon, name, ...props }) => (
-    <div className="relative">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{icon}</div>
-        <input
-            name={name}
-            {...props}
-            className="w-full bg-gray-700 border-gray-600 rounded-md p-2 pl-10 focus:ring-amber-500 focus:border-amber-500"
-        />
+const InputWithIcon = ({ icon, name, label, ...props }) => (
+    <div>
+        {label && <label htmlFor={name} className="block text-sm font-medium text-gray-400 mb-1">{label}</label>}
+        <div className="relative">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{icon}</div>
+            <input name={name} id={name} {...props} className="w-full bg-gray-700 border-gray-600 rounded-md p-2 pl-10 focus:ring-amber-500 focus:border-amber-500" />
+        </div>
+    </div>
+);
+
+const SelectInput = ({ label, name, value, onChange, options }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-400 mb-1">{label}</label>
+        <select id={name} name={name} value={value} onChange={onChange} className="w-full bg-gray-700 border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500 capitalize">
+            {options.map(opt => <option key={opt} value={opt}>{opt.replace(/ /g, '-')}</option>)}
+        </select>
     </div>
 );
 

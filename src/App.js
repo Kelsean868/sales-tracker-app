@@ -7,7 +7,7 @@ import {
     signInWithEmailAndPassword,
     signOut
 } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, collectionGroup, where } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, collectionGroup, where, updateDoc } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -33,6 +33,7 @@ import PolicyModal from './components/modals/PolicyModal';
 import AddUserModal from './components/modals/AddUserModal';
 import EditUserModal from './components/modals/EditUserModal';
 import UniversalSearchModal from './components/modals/UniversalSearchModal';
+import AddPersonModal from './components/modals/AddPersonModal';
 import { NotificationProvider, useNotification } from './context/NotificationContext';
 import { ACTIVITY_POINTS } from './constants';
 
@@ -103,6 +104,7 @@ const AppContent = () => {
     const [clients, setClients] = useState([]);
     const [activities, setActivities] = useState([]);
     const [contacts, setContacts] = useState([]);
+    const [policies, setPolicies] = useState([]);
     const [teams, setTeams] = useState([]);
     const [units, setUnits] = useState([]);
     const [branches, setBranches] = useState([]);
@@ -118,6 +120,7 @@ const AppContent = () => {
     const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
     const [isEditUserModalOpen, setEditUserModalOpen] = useState(false);
     const [isSearchModalOpen, setSearchModalOpen] = useState(false);
+    const [isAddPersonModalOpen, setAddPersonModalOpen] = useState(false);
 
     // Selected item states
     const [selectedLead, setSelectedLead] = useState(null);
@@ -127,6 +130,29 @@ const AppContent = () => {
     const [userToEdit, setUserToEdit] = useState(null);
 
     const { addToast } = useNotification();
+    
+    // --- Data Fetching Logic ---
+    const fetchAdminData = useCallback(() => {
+        const getAdminData = httpsCallable(functions, 'getAdminDashboardData');
+        getAdminData()
+            .then(result => {
+                const { data } = result;
+                setLeads(data.leads || []);
+                setClients(data.clients || []);
+                setActivities(data.activities || []);
+                setContacts(data.contacts || []);
+                setAllUsers(data.allUsers || []);
+                setTeams(data.teams || []);
+                setUnits(data.units || []);
+                setBranches(data.branches || []);
+                setPolicies(data.policies || []);
+            })
+            .catch(error => {
+                console.error("Error fetching admin data:", error);
+                addToast(`Could not load admin dashboard: ${error.message}`, "error");
+            });
+    }, [addToast]);
+
 
     // --- Authentication and User Data Effect ---
     useEffect(() => {
@@ -159,25 +185,7 @@ const AppContent = () => {
         const managementRoles = ['super_admin', 'admin'];
 
         if (managementRoles.includes(user.role)) {
-            const getAdminData = httpsCallable(functions, 'getAdminDashboardData');
-            
-            getAdminData()
-                .then(result => {
-                    const { data } = result;
-                    setLeads(data.leads || []);
-                    setClients(data.clients || []);
-                    setActivities(data.activities || []);
-                    setContacts(data.contacts || []);
-                    setAllUsers(data.allUsers || []);
-                    setTeams(data.teams || []);
-                    setUnits(data.units || []);
-                    setBranches(data.branches || []);
-                })
-                .catch(error => {
-                    console.error("Error fetching admin data:", error);
-                    addToast(`Could not load admin dashboard: ${error.message}`, "error");
-                });
-            
+            fetchAdminData();
             return;
         }
 
@@ -195,6 +203,7 @@ const AppContent = () => {
         createListener(query(collection(db, 'users', user.uid, 'contacts')), setContacts);
         createListener(query(collection(db, 'users', user.uid, 'clients')), setClients);
         createListener(query(collection(db, 'users', user.uid, 'activities')), setActivities);
+        createListener(query(collection(db, 'users', user.uid, 'policies')), setPolicies);
         
         createListener(query(collection(db, 'users')), setAllUsers);
         createListener(query(collection(db, 'teams')), setTeams);
@@ -204,7 +213,7 @@ const AppContent = () => {
         return () => {
             unsubscribes.forEach(unsub => unsub());
         };
-    }, [user, addToast]);
+    }, [user, fetchAdminData]);
 
     // --- Handler Functions ---
     const handleAddLead = async (leadData) => {
@@ -224,19 +233,52 @@ const AppContent = () => {
             addToast('Failed to add lead.', 'error');
         }
     };
+
+    const handleAddPolicy = async (policyData) => {
+        if (!user || !user.uid) return;
+        try {
+            const dataToSave = {
+                ...policyData,
+                agentId: user.uid,
+                teamId: user.teamId || null,
+                unitId: user.unitId || null,
+                branchId: user.branchId || null,
+            };
+
+            if (policyData.id) {
+                const policyRef = doc(db, 'users', user.uid, 'policies', policyData.id);
+                await setDoc(policyRef, dataToSave, { merge: true });
+                addToast('Policy updated successfully!', 'success');
+            } else {
+                await addDoc(collection(db, 'users', user.uid, 'policies'), dataToSave);
+                addToast('Policy added successfully!', 'success');
+            }
+
+            setPolicyModalOpen(false);
+            const managementRoles = ['super_admin', 'admin'];
+            if (managementRoles.includes(user.role)) {
+                fetchAdminData();
+            }
+        } catch (error) {
+            console.error("Error saving policy: ", error);
+            addToast('Failed to save policy.', 'error');
+        }
+    };
     
     const handleAddContact = async (contactData) => {
         if (!user || !user.uid) return;
         try {
-            await addDoc(collection(db, 'users', user.uid, 'contacts'), {
+            const docRef = await addDoc(collection(db, 'users', user.uid, 'contacts'), {
                 ...contactData,
                 createdAt: serverTimestamp(),
                 userId: user.uid,
             });
             addToast('Contact added successfully!', 'success');
+            return { id: docRef.id, ...contactData };
         } catch (error) {
             console.error("Error adding contact: ", error);
             addToast('Failed to add contact.', 'error');
+            return null;
         }
     };
 
@@ -291,6 +333,39 @@ const AppContent = () => {
         }
     };
 
+    const handleConvertToClient = async (lead) => {
+        try {
+            const convertToClientFunction = httpsCallable(functions, 'convertToClient');
+            await convertToClientFunction({ leadId: lead.id, userId: lead.userId });
+            addToast("Lead successfully converted to client!", 'success');
+            setLeadDetailModalOpen(false); // Close the modal on success
+            
+            const managementRoles = ['super_admin', 'admin'];
+            if (managementRoles.includes(user.role)) {
+                fetchAdminData();
+            }
+        } catch (error) {
+            console.error("Error converting lead to client:", error);
+            addToast(`Error: ${error.message}`, 'error');
+        }
+    };
+
+    const handleUpdateClient = async (clientId, clientData) => {
+        if (!user || !user.uid) return;
+        try {
+            const clientRef = doc(db, 'users', user.uid, 'clients', clientId);
+            await updateDoc(clientRef, clientData);
+            addToast('Client updated successfully!', 'success');
+            const managementRoles = ['super_admin', 'admin'];
+            if (managementRoles.includes(user.role)) {
+                fetchAdminData();
+            }
+        } catch (error) {
+            console.error("Error updating client:", error);
+            addToast('Failed to update client.', 'error');
+        }
+    };
+
     const handleLogout = () => {
         signOut(auth).catch(error => {
             console.error("Error signing out:", error);
@@ -308,18 +383,33 @@ const AppContent = () => {
         setLeadDetailModalOpen(true);
     };
 
+    const handleSelectClient = (client) => {
+        setSelectedClient(client);
+        setClientModalOpen(true);
+    };
+    
+    const handleSelectPolicy = (policy) => {
+        setSelectedPolicy(policy);
+        setPolicyModalOpen(true);
+    };
+
     const handleUpdateUser = useCallback((updatedUserData) => {
         setUser(updatedUserData);
     }, []);
 
     const handleSearchClick = () => setSearchModalOpen(true);
     const handleCloseSearch = () => setSearchModalOpen(false);
+    
+    const handleOpenPolicyModal = (policy = null) => {
+        setSelectedPolicy(policy);
+        setPolicyModalOpen(true);
+    };
 
     const renderActiveScreen = () => {
         switch (activeScreen) {
             case 'DASHBOARD': return <Dashboard activities={activities} leads={leads} currentUser={user} />;
             case 'LEADS': return <LeadsScreen leads={leads} onSelectLead={handleSelectLead} allUsers={allUsers} currentUser={user} />;
-            case 'PORTFOLIO': return <PortfolioScreen clients={clients} />;
+            case 'PORTFOLIO': return <PortfolioScreen clients={clients} policies={policies} onSelectClient={handleSelectClient} onSelectPolicy={handleOpenPolicyModal}/>;
             case 'AGENDA': return <AgendaScreen activities={activities} />;
             case 'CONTACTS': return <ContactsScreen contacts={contacts} />;
             case 'LEADERBOARD': return <LeaderboardScreen allUsers={allUsers} activities={activities} />;
@@ -368,6 +458,11 @@ const AppContent = () => {
             <AddLeadModal isOpen={isAddLeadModalOpen} onClose={() => setAddLeadModalOpen(false)} onAddLead={handleAddLead} />
             <AddContactModal isOpen={isAddContactModalOpen} onClose={() => setAddContactModalOpen(false)} onAddContact={handleAddContact} />
             <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setAddUserModalOpen(false)} onAddUser={handleCreateUser} />
+             <AddPersonModal 
+                isOpen={isAddPersonModalOpen} 
+                onClose={() => setAddPersonModalOpen(false)} 
+                onSave={handleAddContact} 
+            />
             <EditUserModal 
                 isOpen={isEditUserModalOpen}
                 onClose={() => setEditUserModalOpen(false)}
@@ -377,8 +472,21 @@ const AppContent = () => {
                 units={units}
                 branches={branches}
             />
-            <LeadDetailModal isOpen={isLeadDetailModalOpen} onClose={() => {setLeadDetailModalOpen(false); setSelectedLead(null);}} lead={selectedLead} />
-            <ClientModal isOpen={isClientModalOpen} onClose={() => setClientModalOpen(false)} client={selectedClient} />
+            <LeadDetailModal 
+                isOpen={isLeadDetailModalOpen} 
+                onClose={() => {setLeadDetailModalOpen(false); setSelectedLead(null);}} 
+                lead={selectedLead}
+                onConvertToClient={handleConvertToClient}
+            />
+            <ClientModal 
+                isOpen={isClientModalOpen} 
+                onClose={() => setClientModalOpen(false)} 
+                client={selectedClient} 
+                policies={policies}
+                onAddPolicy={() => handleOpenPolicyModal(null)}
+                onSelectPolicy={handleOpenPolicyModal}
+                onUpdateClient={handleUpdateClient}
+            />
             <LogActivityModal 
                 isOpen={isLogActivityModalOpen} 
                 onClose={() => setLogActivityModalOpen(false)} 
@@ -387,8 +495,24 @@ const AppContent = () => {
                 currentUser={user}
                 allUsers={allUsers}
             />
-            <PolicyModal isOpen={isPolicyModalOpen} onClose={() => setPolicyModalOpen(false)} policy={selectedPolicy} clientId={selectedClient?.id} />
-            <UniversalSearchModal isOpen={isSearchModalOpen} onClose={handleCloseSearch} />
+            <PolicyModal 
+              isOpen={isPolicyModalOpen} 
+              onClose={() => setPolicyModalOpen(false)} 
+              policy={selectedPolicy} 
+              client={selectedClient}
+              clientId={selectedClient?.id} 
+              onAddPolicy={handleAddPolicy}
+              contacts={contacts}
+              onAddNewPerson={() => setAddPersonModalOpen(true)}
+              ageCalculationType={user?.settings?.ageCalculation || 'ageNextBirthday'}
+            />
+            <UniversalSearchModal 
+                isOpen={isSearchModalOpen} 
+                onClose={handleCloseSearch}
+                onSelectLead={handleSelectLead}
+                onSelectClient={handleSelectClient}
+                onSelectPolicy={handleSelectPolicy}
+            />
         </div>
     );
 };
