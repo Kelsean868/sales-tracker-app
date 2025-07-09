@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { Users, Shield, DollarSign, CheckCircle, Activity, Clock, Phone, Mail, UserPlus, Briefcase } from 'lucide-react';
+import { Users, Shield, DollarSign, CheckCircle, Activity, Clock, Phone, Mail, UserPlus, Briefcase, TrendingUp, Target } from 'lucide-react';
 import Card from '../ui/Card';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const StatCard = ({ icon, label, value, color }) => (
     <Card>
@@ -18,20 +19,17 @@ const StatCard = ({ icon, label, value, color }) => (
 
 const RecentActivityItem = ({ activity }) => {
     const activityIcons = {
-        'Meeting': <Users size={16} />,
+        'Note': <Mail size={16} />,
         'Call': <Phone size={16} />,
-        'Email': <Mail size={16} />,
-        'Presentation': <Briefcase size={16} />,
-        'Follow-up': <Activity size={16} />,
-        'New Client': <UserPlus size={16} />,
-        'Policy Sold': <CheckCircle size={16} />,
+        'Meeting': <Users size={16} />,
+        'Lunch': <Briefcase size={16} />,
+        'FFI': <UserPlus size={16} />,
+        'API': <DollarSign size={16} />,
         default: <Activity size={16} />
     };
 
     const toDate = (timestamp) => {
-        if (timestamp?.toDate) {
-            return timestamp.toDate();
-        }
+        if (timestamp?.toDate) return timestamp.toDate();
         return new Date(timestamp);
     };
 
@@ -41,8 +39,8 @@ const RecentActivityItem = ({ activity }) => {
                 {activityIcons[activity.type] || activityIcons.default}
             </div>
             <div className="flex-grow">
-                <p className="text-white font-semibold">{activity.type}</p>
-                <p className="text-gray-400 text-sm">{activity.details}</p>
+                <p className="text-white font-semibold">{activity.details}</p>
+                <p className="text-gray-400 text-sm">by {activity.userName || 'Unknown'}</p>
             </div>
             <div className="text-right">
                 <p className="text-gray-500 text-xs flex items-center">
@@ -57,53 +55,43 @@ const RecentActivityItem = ({ activity }) => {
     );
 };
 
-const LeadFunnelChart = ({ leads = [] }) => {
+const SalesFunnelChart = ({ leads = [] }) => {
     const funnelData = useMemo(() => {
-        const statuses = ['new', 'contacted', 'qualified', 'proposal', 'converted'];
+        const statuses = ['New', 'Contacted', 'Qualified', 'Proposal Sent', 'Negotiation', 'Closed Won'];
         const counts = statuses.reduce((acc, status) => {
             acc[status] = 0;
             return acc;
         }, {});
         leads.forEach(lead => {
-            if (lead.status && counts[lead.status.toLowerCase()] !== undefined) {
-                counts[lead.status.toLowerCase()]++;
+            if (lead.status && counts[lead.status] !== undefined) {
+                counts[lead.status]++;
             }
         });
         return statuses.map(status => ({
-            status: status.charAt(0).toUpperCase() + status.slice(1),
+            name: status,
             count: counts[status]
         }));
     }, [leads]);
-
-    const maxCount = Math.max(...funnelData.map(d => d.count), 1);
 
     return (
         <Card>
             <div className="p-4">
                 <h3 className="text-lg font-bold mb-4">Sales Funnel</h3>
-                <div className="space-y-3">
-                    {funnelData.map(({ status, count }) => (
-                        <div key={status} className="flex items-center">
-                            <p className="w-1/4 text-sm text-gray-400">{status}</p>
-                            <div className="w-3/4 bg-gray-700 rounded-full h-4">
-                                <div 
-                                    className="bg-blue-500 h-4 rounded-full flex items-center justify-end pr-2"
-                                    style={{ width: `${(count / maxCount) * 100}%` }}
-                                >
-                                   <span className="text-xs font-bold text-white">{count}</span>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={funnelData} layout="vertical" margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <XAxis type="number" hide />
+                        <YAxis type="category" dataKey="name" stroke="#9CA3AF" fontSize={12} tickLine={false} axisLine={false} />
+                        <Tooltip contentStyle={{ backgroundColor: '#374151', border: 'none' }} cursor={{ fill: 'rgba(252, 211, 77, 0.1)' }}/>
+                        <Bar dataKey="count" fill="#3B82F6" barSize={20} label={{ position: 'right', fill: '#fff', fontSize: 12 }} />
+                    </BarChart>
+                </ResponsiveContainer>
             </div>
         </Card>
     );
 };
 
 
-const Dashboard = ({ activities = [], leads = [], policies = [], clients = [], currentUser }) => {
-
+const Dashboard = ({ activities = [], leads = [], policies = [], clients = [], currentUser, allUsers = [] }) => {
     const getGreeting = () => {
         const hour = new Date().getHours();
         if (hour < 12) return 'Good Morning';
@@ -113,58 +101,89 @@ const Dashboard = ({ activities = [], leads = [], policies = [], clients = [], c
     
     const toDate = (timestamp) => {
         if (!timestamp) return null;
-        if (timestamp.toDate) { // Firebase Timestamp object
-            return timestamp.toDate();
-        }
-        return new Date(timestamp); // ISO string
+        if (timestamp.toDate) return timestamp.toDate();
+        return new Date(timestamp);
     };
 
+    const isManager = ['super_admin', 'admin', 'regional_manager', 'branch_manager', 'unit_manager'].includes(currentUser?.role);
+
+    const { myActivities, teamActivities } = useMemo(() => {
+        const my = activities.filter(a => a.userId === currentUser.uid);
+        if (!isManager) return { myActivities: my, teamActivities: [] };
+        
+        // This is a simplified hierarchy check. A real app might need a more robust recursive check.
+        const myTeamUserIds = allUsers.filter(u => u.managerId === currentUser.uid).map(u => u.id);
+        const team = activities.filter(a => myTeamUserIds.includes(a.userId));
+        
+        return { myActivities: my, teamActivities: team };
+    }, [activities, currentUser, allUsers, isManager]);
+
     const recentActivities = useMemo(() => {
-        return [...activities]
+        const feedActivities = isManager ? teamActivities : myActivities;
+        return [...feedActivities]
             .sort((a, b) => toDate(b.timestamp) - toDate(a.timestamp))
             .slice(0, 5);
-    }, [activities]);
+    }, [myActivities, teamActivities, isManager]);
     
-    const monthlyStats = useMemo(() => {
+    const kpiStats = useMemo(() => {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const isThisMonth = (date) => date ? toDate(date) >= startOfMonth : false;
 
-        const newLeads = leads.filter(l => isThisMonth(l.createdAt)).length;
-        const clientsConverted = clients.filter(c => isThisMonth(c.createdAt)).length;
-        const policiesSold = policies.filter(p => isThisMonth(p.inforcedDate)).length;
-        const totalPremium = policies.reduce((sum, p) => {
-            if(isThisMonth(p.inforcedDate)) {
-                return sum + (Number(p.premium) || 0);
-            }
-            return sum;
-        }, 0);
+        const calcStats = (userList) => {
+            const userIds = userList.map(u => u.id);
+            const relevantPolicies = policies.filter(p => userIds.includes(p.userId) && isThisMonth(p.createdAt));
+            const relevantClients = clients.filter(c => userIds.includes(c.userId) && isThisMonth(c.createdAt));
+            const relevantLeads = leads.filter(l => userIds.includes(l.userId) && isThisMonth(l.createdAt));
+            
+            return {
+                policiesSold: relevantPolicies.length,
+                totalPremium: relevantPolicies.reduce((sum, p) => sum + (Number(p.premium) || 0), 0),
+                clientsConverted: relevantClients.length,
+                newLeads: relevantLeads.length,
+            };
+        }
 
-        return { newLeads, clientsConverted, policiesSold, totalPremium };
+        const myStats = calcStats([currentUser]);
+        if (!isManager) return { my: myStats };
 
-    }, [leads, clients, policies]);
+        const teamStats = calcStats(allUsers.filter(u => u.managerId === currentUser.uid));
+        return { my: myStats, team: teamStats };
+    }, [leads, clients, policies, currentUser, allUsers, isManager]);
     
-
     return (
         <div className="space-y-6">
             <div>
                 <h1 className="text-3xl font-bold text-white">{getGreeting()}, {currentUser?.name?.split(' ')[0]}!</h1>
                 <p className="text-gray-400">Here's your performance summary for this month.</p>
             </div>
-
+            
+            <h3 className="text-lg font-bold">My Performance</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard icon={<Users size={24} />} label="New Leads" value={monthlyStats.newLeads} color="blue" />
-                <StatCard icon={<CheckCircle size={24} />} label="Clients Converted" value={monthlyStats.clientsConverted} color="green" />
-                <StatCard icon={<Shield size={24} />} label="Policies Sold" value={monthlyStats.policiesSold} color="purple" />
-                <StatCard icon={<DollarSign size={24} />} label="Total Premium" value={`$${monthlyStats.totalPremium.toLocaleString()}`} color="amber" />
+                <StatCard icon={<TrendingUp size={24} />} label="New Leads" value={kpiStats.my.newLeads} color="blue" />
+                <StatCard icon={<CheckCircle size={24} />} label="Clients Converted" value={kpiStats.my.clientsConverted} color="green" />
+                <StatCard icon={<Shield size={24} />} label="Policies Sold" value={kpiStats.my.policiesSold} color="purple" />
+                <StatCard icon={<DollarSign size={24} />} label="My Premium" value={`$${kpiStats.my.totalPremium.toLocaleString()}`} color="amber" />
             </div>
+
+            {isManager && (
+                <>
+                    <h3 className="text-lg font-bold">Team Performance</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <StatCard icon={<Users size={24} />} label="Team Leads" value={kpiStats.team.newLeads} color="blue" />
+                        <StatCard icon={<Target size={24} />} label="Team Conversions" value={kpiStats.team.clientsConverted} color="green" />
+                        <StatCard icon={<CheckCircle size={24} />} label="Team Policies" value={kpiStats.team.policiesSold} color="purple" />
+                        <StatCard icon={<DollarSign size={24} />} label="Team Premium" value={`$${kpiStats.team.totalPremium.toLocaleString()}`} color="amber" />
+                    </div>
+                </>
+            )}
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
-                    <LeadFunnelChart leads={leads} />
+                    <SalesFunnelChart leads={isManager ? leads.filter(l => allUsers.some(u => u.managerId === currentUser.uid && u.id === l.userId)) : leads.filter(l => l.userId === currentUser.uid)} />
                 </div>
                  <div>
-                    <h3 className="text-lg font-bold mb-4">Recent Activity</h3>
+                    <h3 className="text-lg font-bold mb-4">Recent Activity {isManager && '(My Team)'}</h3>
                     <Card>
                         <div className="p-2">
                             {recentActivities.length > 0 ? (

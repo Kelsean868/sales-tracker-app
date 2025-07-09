@@ -1,46 +1,59 @@
 import React from 'react';
-import { UserCircle, Bell, Search } from 'lucide-react';
+import { PowerIcon, UserCircleIcon, BellIcon, MagnifyingGlassIcon, ArrowLeftOnRectangleIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
+import LiveClock from './LiveClock';
+import Weather from './Weather';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
-const TopHeader = ({ user, onProfileClick, onSearchClick }) => {
-    const getInitials = (name) => {
-        if (!name) return '';
-        const names = name.split(' ');
-        return names.map(n => n[0]).join('').toUpperCase();
+const TopHeader = ({ user, onProfileClick, onSearchClick, isClockedIn, onClockIn, onClockOut }) => {
+    const handleDebugClick = async () => {
+        const functions = getFunctions();
+        const debugAdminDashboard = httpsCallable(functions, 'debugAdminDashboard');
+        try {
+            console.log("Calling debugAdminDashboard function...");
+            const result = await debugAdminDashboard();
+            console.log('Debug result from admin dashboard check:', result.data);
+        } catch (error) {
+            console.error('Error calling debugAdminDashboard:', error);
+        }
     };
 
     return (
-        <header className="bg-gray-800 text-white p-4 flex justify-between items-center sticky top-0 z-30 shadow-lg">
+        <header className="bg-gray-800 shadow-md p-4 flex justify-between items-center text-white">
             <div className="flex items-center">
-                {user?.photoURL ? (
-                    <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full mr-3" />
-                ) : (
-                    <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center mr-3 text-lg font-bold">
-                        {getInitials(user?.name)}
-                    </div>
-                )}
+                <div className="w-10 h-10 bg-amber-400 rounded-full mr-3"></div>
                 <div>
-                    <h1 className="text-xl font-bold">{user?.name || 'Agent'}</h1>
-                    <p className="text-sm text-gray-400 capitalize">{user?.role?.replace('_', ' ') || 'Sales Person'}</p>
+                    <h1 className="text-xl font-bold">Sales Pro</h1>
+                    <p className="text-sm text-gray-400">{user?.name || 'Guest'}</p>
                 </div>
             </div>
+
+            <div className="flex-grow flex justify-center items-center">
+                <LiveClock />
+                <Weather />
+            </div>
+
             <div className="flex items-center space-x-4">
-                {/* NEW Search Button */}
+                <button onClick={onSearchClick} className="p-2 rounded-full hover:bg-gray-700">
+                    <MagnifyingGlassIcon className="h-6 w-6" />
+                </button>
+                <button className="p-2 rounded-full hover:bg-gray-700">
+                    <BellIcon className="h-6 w-6" />
+                </button>
                 <button 
-                    onClick={onSearchClick} 
-                    className="text-gray-300 hover:text-white transition-colors"
-                    aria-label="Open search"
+                    onClick={isClockedIn ? onClockOut : onClockIn}
+                    className={`flex items-center px-4 py-2 rounded-md font-semibold text-sm ${isClockedIn ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
                 >
-                    <Search size={22} />
+                    {isClockedIn ? <ArrowLeftOnRectangleIcon className="h-5 w-5 mr-2" /> : <ArrowRightOnRectangleIcon className="h-5 w-5 mr-2" />}
+                    {isClockedIn ? 'Clock Out' : 'Clock In'}
                 </button>
-                <button className="relative text-gray-300 hover:text-white transition-colors">
-                    <Bell size={22} />
-                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                    </span>
+                <button onClick={onProfileClick} className="p-2 rounded-full hover:bg-gray-700">
+                    <UserCircleIcon className="h-8 w-8" />
                 </button>
-                <button onClick={onProfileClick} className="text-gray-300 hover:text-white transition-colors">
-                    <UserCircle size={22} />
+                <button
+                    onClick={handleDebugClick}
+                    className="p-2 bg-blue-500 text-white rounded"
+                >
+                    Debug
                 </button>
             </div>
         </header>

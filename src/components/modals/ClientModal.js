@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Phone, Mail, Building, Briefcase, Plus, Shield, Edit, Calendar, Save } from 'lucide-react';
+import { X, User, Phone, Mail, Building, Briefcase, Plus, Shield, Edit, Calendar, Save, DollarSign, Home } from 'lucide-react';
 
 const ClientModal = ({ isOpen, onClose, client, policies = [], onAddPolicy, onSelectPolicy, onUpdateClient }) => {
     const [isEditMode, setIsEditMode] = useState(false);
@@ -13,6 +13,9 @@ const ClientModal = ({ isOpen, onClose, client, policies = [], onAddPolicy, onSe
                 phone: client.phone || '',
                 address: client.address || '',
                 dob: client.dob ? new Date(client.dob).toISOString().slice(0, 10) : '',
+                occupation: client.occupation || '',
+                employer: client.employer || '',
+                monthlyIncome: client.monthlyIncome || '',
             });
         }
     }, [client]);
@@ -54,11 +57,14 @@ const ClientModal = ({ isOpen, onClose, client, policies = [], onAddPolicy, onSe
                     <EditableInfoItem icon={<Phone />} label="Phone" value={clientData.phone} name="phone" isEditMode={isEditMode} onChange={handleChange} />
                     <EditableInfoItem icon={<Building />} label="Address" value={clientData.address} name="address" isEditMode={isEditMode} onChange={handleChange} />
                     <EditableInfoItem icon={<Calendar />} label="Date of Birth" value={clientData.dob} name="dob" isEditMode={isEditMode} onChange={handleChange} type="date" />
+                    <EditableInfoItem icon={<Briefcase />} label="Occupation" value={clientData.occupation} name="occupation" isEditMode={isEditMode} onChange={handleChange} />
+                    <EditableInfoItem icon={<Home />} label="Employer" value={clientData.employer} name="employer" isEditMode={isEditMode} onChange={handleChange} />
+                    <EditableInfoItem icon={<DollarSign />} label="Monthly Income" value={clientData.monthlyIncome} name="monthlyIncome" isEditMode={isEditMode} onChange={handleChange} type="number" />
                 </div>
 
                 <div className="mt-6">
                     <div className="flex justify-between items-center mb-2">
-                         <h3 className="text-lg font-semibold text-gray-300 flex items-center"><Briefcase className="mr-2" size={20} /> Policies</h3>
+                         <h3 className="text-lg font-semibold text-gray-300 flex items-center"><Shield className="mr-2" size={20} /> Policies</h3>
                         <button onClick={onAddPolicy} className="flex items-center px-3 py-1 text-sm rounded-md font-semibold text-white bg-blue-600 hover:bg-blue-500"><Plus className="mr-1" size={16} /> Add Policy</button>
                     </div>
                     <div className="bg-gray-700/50 p-4 rounded-lg max-h-48 overflow-y-auto">

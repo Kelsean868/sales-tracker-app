@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, List, Calendar, MessageSquare, Phone, Users, CheckSquare, DollarSign, User as UserIcon } from 'lucide-react';
-import { ACTIVITY_TYPES } from '../../constants';
+import { ACTIVITY_TYPES, ACTIVITY_POINTS } from '../../constants';
 
 /**
  * LogActivityModal component
@@ -24,6 +24,7 @@ const LogActivityModal = ({ isOpen, onClose, onLogActivity, relatedTo, currentUs
     const [scheduledTimestamp, setScheduledTimestamp] = useState('');
     // NEW: State to hold the ID of the user the activity is being logged for
     const [targetUserId, setTargetUserId] = useState(currentUser?.uid);
+    const [apiValue, setApiValue] = useState('');
 
     // Reset state when the modal is closed or opened
     useEffect(() => {
@@ -34,6 +35,7 @@ const LogActivityModal = ({ isOpen, onClose, onLogActivity, relatedTo, currentUs
             setScheduledTimestamp('');
             // Default to logging for the current user unless changed
             setTargetUserId(currentUser?.uid);
+            setApiValue('');
         }
     }, [isOpen, currentUser]);
 
@@ -52,6 +54,8 @@ const LogActivityModal = ({ isOpen, onClose, onLogActivity, relatedTo, currentUs
             scheduledTimestamp: isScheduled && scheduledTimestamp ? new Date(scheduledTimestamp).toISOString() : null,
             // Pass the target user's ID to the handler function
             logForUserId: targetUserId,
+            points: ACTIVITY_POINTS[activityType] || 0,
+            apiValue: activityType === ACTIVITY_TYPES.API ? apiValue : null,
         };
         
         onLogActivity(activityData);
@@ -130,11 +134,26 @@ const LogActivityModal = ({ isOpen, onClose, onLogActivity, relatedTo, currentUs
                                         }`}
                                     >
                                         {activityIcons[type]}
-                                        <span className="ml-2">{type.replace(/_/g, ' ')}</span>
+                                        <span className="ml-2">{type.replace(/_/g, ' ')} ({ACTIVITY_POINTS[type]} pts)</span>
                                     </button>
                                 ))}
                             </div>
                         </div>
+
+                        {activityType === ACTIVITY_TYPES.API && (
+                            <div>
+                                <label htmlFor="apiValue" className="block text-sm font-medium text-gray-300 mb-2">API Value</label>
+                                <input
+                                    id="apiValue"
+                                    type="number"
+                                    value={apiValue}
+                                    onChange={(e) => setApiValue(e.target.value)}
+                                    placeholder="Enter API value"
+                                    className="w-full bg-gray-700 border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500"
+                                    required
+                                />
+                            </div>
+                        )}
 
                         <div>
                             <label htmlFor="details" className="block text-sm font-medium text-gray-300 mb-2">Details / Notes</label>

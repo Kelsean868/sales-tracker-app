@@ -1,0 +1,92 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+        return request.auth.token.role == 'super_admin';
+    }
+
+    function isAdmin() {
+        return request.auth.token.role == 'admin';
+    }
+
+    function isOwner(resourceData) {
+        return request.auth.uid == resourceData.userId;
+    }
+
+    function isTeamLead(resourceData) {
+        return request.auth.token.role == 'TEAM_LEAD' && request.auth.token.teamId == resourceData.teamId;
+    }
+
+    function isUnitManager(resourceData) {
+        return request.auth.token.role == 'UNIT_MANAGER' && request.auth.token.unitId == resourceData.unitId;
+    }
+
+    function isBranchManager(resourceData) {
+        return request.auth.token.role == 'BRANCH_MANAGER' && request.auth.token.branchId == resourceData.branchId;
+    }
+
+    function isRegionalManager(resourceData) {
+        return request.auth.token.role == 'REGIONAL_MANAGER' && request.auth.token.regionId == resourceData.regionId;
+    }
+
+    function isAuthorizedToRead(resourceData) {
+      return isSuperAdmin() || isAdmin() || isOwner(resourceData) || isTeamLead(resourceData) || isUnitManager(resourceData) || isBranchManager(resourceData) || isRegionalManager(resourceData);
+    }
+    
+    function isCreatorOrAdmin() {
+      let claims = request.auth.token;
+      return isSuperAdmin() || isAdmin() ||
+             (request.resource.data.userId == claims.userId &&
+              request.resource.data.teamId == claims.teamId &&
+              request.resource.data.unitId == claims.unitId &&
+              request.resource.data.branchId == claims.branchId &&
+              request.resource.data.regionId == claims.regionId);
+    }
+
+    // --- Collection Group Rule for Core Data ---
+    match /{path=**}/{collectionId}/{documentId} {
+      allow read: if isSignedIn() &&
+                     (collectionId in ['leads', 'clients', 'contacts', 'policies', 'activities'] &&
+                     isAuthorizedToRead(resource.data));
+
+      allow create: if isSignedIn() &&
+                       (collectionId in ['leads', 'clients', 'contacts', 'policies', 'activities'] &&
+                       isCreatorOrAdmin());
+
+      allow update, delete: if isSignedIn() &&
+                               (collectionId in ['leads', 'clients', 'contacts', 'policies', 'activities'] &&
+                               isOwner(resource.data));
+    }
+
+    // --- Rules for User Profiles ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow create: if false; // Should be created via functions
+      allow delete: if false; // Should be handled by functions
+    }
+
+    // --- Rules for Organizational Structure (read-only for clients) ---
+    match /regions/{docId}   { allow read: if isSignedIn(); allow write: if false; }
+    match /branches/{docId}  { allow read: if isSignedIn(); allow write: if false; }
+    match /units/{docId}     { allow read: if isSignedIn(); allow write: if false; }
+    match /teams/{docId}     { allow read: if isSignedIn(); allow write: if false; }
+
+    // --- Rule for Goals ---
+    match /goals/{goalId} {
+       allow read, write: if isSignedIn() && (isOwner(resource.data) || isAdmin() || isSuperAdmin());
+    }
+
+    // --- Rule for Work History ---
+    match /workHistory/{docId} {
+        allow read, create: if isSignedIn() && isOwner(resource.data);
+    }
+  }
+}

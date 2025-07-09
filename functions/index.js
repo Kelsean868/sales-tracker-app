@@ -5,32 +5,53 @@ const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 
 admin.initializeApp();
 
-// --- User Management Functions ---
+// Import all function modules
+const leaderboard = require('./leaderboard');
+const notifications = require('./notifications');
+const troubleshoot = require('./troubleshoot');
+
+const setCustomUserClaims = async (uid) => {
+  try {
+    const userDoc = await admin.firestore().collection("users").doc(uid).get();
+    if (!userDoc.exists) {
+      console.log(`User document not found for UID: ${uid}. Skipping claims update.`);
+      return;
+    }
+    const userData = userDoc.data();
+    const claims = {
+      role: userData.role || "",
+      userId: uid,
+      teamId: userData.teamId || null,
+      unitId: userData.unitId || null,
+      branchId: userData.branchId || null,
+      regionId: userData.regionId || null,
+    };
+    await admin.auth().setCustomUserClaims(uid, claims);
+    console.log(`Custom claims set for user ${uid}:`, claims);
+  } catch (error) {
+    console.error(`Error setting custom claims for user ${uid}:`, error);
+  }
+};
+
 exports.addUser = onCall(async (request) => {
   const {data, auth} = request;
   if (!auth) {
     throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
   }
-  const callerUid = auth.uid;
-  const userRecord = await admin.firestore().collection("users").doc(callerUid).get();
-  if (!userRecord.exists || userRecord.data().role !== "super_admin") {
-    throw new functions.https.HttpsError("permission-denied", "Only super admins can add new users.");
-  }
-  const {email, password, name, role, branch, unit} = data;
+
+  const {email, password, name, role, teamId, unitId, branchId, regionId} = data;
   try {
-    const userAuth = await admin.auth().createUser({
-      email: email,
-      password: password,
-      displayName: name,
-    });
-    await admin.firestore().collection("users").doc(userAuth.uid).set({
-      name: name,
-      email: email,
-      role: role,
-      branch: branch,
-      unit: unit,
+    const userAuth = await admin.auth().createUser({email, password, displayName: name});
+    const userData = {
+      name, email, role,
+      teamId: teamId || null,
+      unitId: unitId || null,
+      branchId: branchId || null,
+      regionId: regionId || null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+    await admin.firestore().collection("users").doc(userAuth.uid).set(userData);
+    await setCustomUserClaims(userAuth.uid);
     return {result: `User ${email} created successfully.`};
   } catch (error) {
     console.error("Error creating new user:", error);
@@ -43,42 +64,26 @@ exports.editUser = onCall(async (request) => {
   if (!auth) {
     throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
   }
-  const callerUid = auth.uid;
-  const userRecord = await admin.firestore().collection("users").doc(callerUid).get();
-  if (!userRecord.exists || userRecord.data().role !== "super_admin") {
-    throw new functions.https.HttpsError("permission-denied", "Only super admins can edit users.");
-  }
-  const {uid, name, role, branch, unit} = data;
+  const {uidToEdit, updates} = data;
   try {
-    await admin.firestore().collection("users").doc(uid).update({
-      name: name,
-      role: role,
-      branch: branch,
-      unit: unit,
-    });
-    return {result: `User ${name} updated successfully.`};
+    await admin.firestore().collection("users").doc(uidToEdit).update(updates);
+    await setCustomUserClaims(uidToEdit);
+    return {result: `User updated successfully.`};
   } catch (error) {
     console.error("Error updating user:", error);
     throw new functions.https.HttpsError("internal", "Error updating user.", error);
   }
 });
 
-// --- Goal Update Functions ---
-exports.updateGoalOnActivityLog = onDocumentCreated("users/{userId}/activities/{activityId}", async (event) => {
-  const snap = event.data;
-  if (!snap) {
-    return;
-  }
-  const activity = snap.data();
+exports.updateGoalOnActivityLog = onDocumentCreated("activities/{activityId}", async (event) => {
+  const activity = event.data.data();
   const {userId, type, points = 0} = activity;
-  if (!userId) {
-    return null;
-  }
+  if (!userId || !type) return null;
+
   const goalsRef = admin.firestore().collection("goals").where("userId", "==", userId).where("status", "==", "active");
   const goalsSnapshot = await goalsRef.get();
-  if (goalsSnapshot.empty) {
-    return null;
-  }
+  if (goalsSnapshot.empty) return null;
+
   const batch = admin.firestore().batch();
   goalsSnapshot.forEach((doc) => {
     const progress = doc.data().progress || {};
@@ -89,21 +94,15 @@ exports.updateGoalOnActivityLog = onDocumentCreated("users/{userId}/activities/{
   return batch.commit();
 });
 
-exports.updateGoalOnLeadAdd = onDocumentCreated("users/{userId}/leads/{leadId}", async (event) => {
-  const snap = event.data;
-  if (!snap) {
-    return;
-  }
-  const lead = snap.data();
-  const userId = lead.userId;
-  if (!userId) {
-    return null;
-  }
+exports.updateGoalOnLeadAdd = onDocumentCreated("leads/{leadId}", async (event) => {
+  const lead = event.data.data();
+  const {userId} = lead;
+  if (!userId) return null;
+
   const goalsRef = admin.firestore().collection("goals").where("userId", "==", userId).where("status", "==", "active");
   const goalsSnapshot = await goalsRef.get();
-  if (goalsSnapshot.empty) {
-    return null;
-  }
+  if (goalsSnapshot.empty) return null;
+
   const batch = admin.firestore().batch();
   goalsSnapshot.forEach((doc) => {
     const progress = doc.data().progress || {};
@@ -113,99 +112,81 @@ exports.updateGoalOnLeadAdd = onDocumentCreated("users/{userId}/leads/{leadId}",
   return batch.commit();
 });
 
-exports.updateGoalOnPolicyAdd = onDocumentCreated("users/{userId}/policies/{policyId}", async (event) => {
-  const snap = event.data;
-  if (!snap) {
-    return;
-  }
-  const policy = snap.data();
-  const {agentId: userId, premium = 0} = policy;
-  if (!userId) {
-    return null;
-  }
+exports.updateGoalOnPolicyAdd = onDocumentCreated("policies/{policyId}", async (event) => {
+  const policy = event.data.data();
+  const {userId, premium = 0} = policy;
+  if (!userId) return null;
+
   const goalsRef = admin.firestore().collection("goals").where("userId", "==", userId).where("status", "==", "active");
   const goalsSnapshot = await goalsRef.get();
-  if (goalsSnapshot.empty) {
-    return null;
-  }
+  if (goalsSnapshot.empty) return null;
+
   const batch = admin.firestore().batch();
   goalsSnapshot.forEach((doc) => {
     const progress = doc.data().progress || {};
     progress["policies"] = (progress["policies"] || 0) + 1;
-    progress["premium"] = (progress["premium"] || 0) + premium;
+    progress["premium"] = (progress["premium"] || 0) + Number(premium);
     batch.update(doc.ref, {progress});
   });
   return batch.commit();
 });
 
-// --- Search Utility Functions ---
-exports.processNewLead = onDocumentCreated("users/{userId}/leads/{leadId}", (event) => {
-  const leadData = event.data.data();
-  if (leadData && leadData.name) {
-    return event.data.ref.update({
-      name_lowercase: leadData.name.toLowerCase(),
-    });
-  }
-  return null;
-});
+const createLowercaseNameTrigger = (collectionName) => {
+  return onDocumentCreated(`${collectionName}/{docId}`, (event) => {
+    const data = event.data.data();
+    if (data && data.name) {
+      return event.data.ref.update({
+        name_lowercase: data.name.toLowerCase(),
+      });
+    }
+    return null;
+  });
+};
 
-exports.processNewClient = onDocumentCreated("users/{userId}/clients/{clientId}", (event) => {
-  const clientData = event.data.data();
-  if (clientData && clientData.name) {
-    return event.data.ref.update({
-      name_lowercase: clientData.name.toLowerCase(),
-    });
-  }
-  return null;
-});
+exports.processNewLead = createLowercaseNameTrigger("leads");
+exports.processNewClient = createLowercaseNameTrigger("clients");
+exports.processNewContact = createLowercaseNameTrigger("contacts");
 
-// --- Lead Conversion Function ---
 exports.convertToClient = onCall(async (request) => {
   const {data, auth} = request;
   if (!auth) {
-    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
+    throw new functions.https.HttpsError("unauthenticated", "Must be authenticated.");
   }
-
-  const {leadId, userId} = data;
-  if (!leadId || !userId) {
-    throw new functions.https.HttpsError(
-        "invalid-argument",
-        "The function must be called with a 'leadId' and 'userId'.",
-    );
+  const {leadId} = data;
+  if (!leadId) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing 'leadId'.");
   }
 
   const db = admin.firestore();
-  const leadRef = db.collection("users").doc(userId).collection("leads").doc(leadId);
+  const leadRef = db.collection("leads").doc(leadId);
   const leadDoc = await leadRef.get();
 
   if (!leadDoc.exists) {
     throw new functions.https.HttpsError("not-found", "Lead not found.");
   }
-
   const leadData = leadDoc.data();
 
   if (leadData.status === "Converted") {
-    throw new functions.https.HttpsError("failed-precondition", "This lead has already been converted.");
+    throw new functions.https.HttpsError("failed-precondition", "Lead already converted.");
   }
 
   const clientData = {
     name: leadData.name,
     email: leadData.email,
     phone: leadData.phone,
-    address: leadData.address || "",
     dob: leadData.dob || null,
     userId: leadData.userId,
     teamId: leadData.teamId,
     unitId: leadData.unitId,
     branchId: leadData.branchId,
+    regionId: leadData.regionId,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     convertedFromLead: leadId,
   };
 
   try {
-    const clientRef = await db.collection("users").doc(userId).collection("clients").add(clientData);
+    const clientRef = await db.collection("clients").add(clientData);
     await leadRef.update({status: "Converted", convertedToClientId: clientRef.id});
-
     return {result: `Successfully converted lead to client with ID: ${clientRef.id}`};
   } catch (error) {
     console.error("Error converting lead to client:", error);
@@ -213,106 +194,87 @@ exports.convertToClient = onCall(async (request) => {
   }
 });
 
-
-// --- Search Function ---
 exports.universalSearch = onCall(async (request) => {
   const {data, auth} = request;
   if (!auth) {
-    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
+    throw new functions.https.HttpsError("unauthenticated", "Must be authenticated.");
   }
-  const searchTerm = data.searchTerm.toLowerCase();
+
+  const searchTerm = (data.searchTerm || "").toLowerCase();
   if (!searchTerm || searchTerm.length < 2) {
     throw new functions.https.HttpsError("invalid-argument", "Search term must be at least 2 characters long.");
   }
-  const uid = auth.uid;
-  const userDoc = await admin.firestore().collection("users").doc(uid).get();
-  if (!userDoc.exists) {
-    throw new functions.https.HttpsError("not-found", "User not found.");
-  }
-  const userData = userDoc.data();
-  const {role, unitId, branchId} = userData;
+
   const db = admin.firestore();
-  const results = {
-    leads: [],
-    clients: [],
-    policies: [],
+  const results = {leads: [], clients: [], policies: []};
+
+  const searchCollections = {
+    leads: "name_lowercase",
+    clients: "name_lowercase",
+    policies: "policyNumber", // Assuming policy numbers are stored in lowercase or are case-insensitive
   };
-  const allLeadsSnapshot = await db.collectionGroup("leads").get();
-  allLeadsSnapshot.forEach((doc) => {
-    const lead = doc.data();
-    if (lead.name_lowercase && lead.name_lowercase.startsWith(searchTerm)) {
-      if (role === "super_admin" || role === "admin" ||
-         (role === "branch_manager" && lead.branchId === branchId) ||
-         (role === "unit_manager" && lead.unitId === unitId) ||
-         (role === "sales_person" && lead.userId === uid)) {
-        results.leads.push({id: doc.id, ...lead});
-      }
-    }
+
+  const searchPromises = Object.entries(searchCollections).map(async ([collectionName, fieldName]) => {
+    const snapshot = await db.collection(collectionName)
+        .where(fieldName, ">=", searchTerm)
+        .where(fieldName, "<=", searchTerm + "\uf8ff")
+        .limit(15)
+        .get();
+
+    snapshot.forEach((doc) => {
+      results[collectionName].push({id: doc.id, ...doc.data()});
+    });
   });
-  const allClientsSnapshot = await db.collectionGroup("clients").get();
-  allClientsSnapshot.forEach((doc) => {
-    const client = doc.data();
-    if (client.name_lowercase && client.name_lowercase.startsWith(searchTerm)) {
-      if (role === "super_admin" || role === "admin" ||
-         (role === "branch_manager" && client.branchId === branchId) ||
-         (role === "unit_manager" && client.unitId === unitId) ||
-         (role === "sales_person" && client.userId === uid)) {
-        results.clients.push({id: doc.id, ...client});
-      }
-    }
-  });
-  const allPoliciesSnapshot = await db.collectionGroup("policies").get();
-  allPoliciesSnapshot.forEach((doc) => {
-    const policy = doc.data();
-    if (policy.policyNumber && policy.policyNumber.toLowerCase().startsWith(searchTerm)) {
-      if (role === "super_admin" || role === "admin" ||
-         (role === "branch_manager" && policy.branchId === branchId) ||
-         (role === "unit_manager" && policy.unitId === unitId) ||
-         (role === "sales_person" && policy.agentId === uid)) {
-        results.policies.push({id: doc.id, ...policy});
-      }
-    }
-  });
+
+  await Promise.all(searchPromises);
   return results;
 });
 
-// --- Admin Data Fetching Function ---
 exports.getAdminDashboardData = onCall(async (request) => {
-  const {auth} = request;
-  if (!auth) {
-    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
-  }
-  const userDoc = await admin.firestore().collection("users").doc(auth.uid).get();
-  if (!userDoc.exists || userDoc.data().role !== "super_admin") {
-    throw new functions.https.HttpsError("permission-denied", "You must be a super admin to call this function.");
-  }
-  const db = admin.firestore();
-  const collectionsToFetch = [
-    "leads", "clients", "activities", "contacts", "users",
-    "teams", "units", "branches", "policies",
-  ];
-  const promises = collectionsToFetch.map((col) => db.collectionGroup(col).get());
-  const [
-    leadsSnapshot,
-    clientsSnapshot,
-    activitiesSnapshot,
-    contactsSnapshot,
-    usersSnapshot,
-    teamsSnapshot,
-    unitsSnapshot,
-    branchesSnapshot,
-    policiesSnapshot,
-  ] = await Promise.all(promises);
-  const extractData = (snapshot) => snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()}));
-  return {
-    leads: extractData(leadsSnapshot),
-    clients: extractData(clientsSnapshot),
-    activities: extractData(activitiesSnapshot),
-    contacts: extractData(contactsSnapshot),
-    allUsers: extractData(usersSnapshot),
-    teams: extractData(teamsSnapshot),
-    units: extractData(unitsSnapshot),
-    branches: extractData(branchesSnapshot),
-    policies: extractData(policiesSnapshot),
-  };
+    const { auth } = request;
+    if (!auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be authenticated.");
+    }
+    const claims = auth.token;
+    if (claims.role !== "super_admin" && claims.role !== "admin") {
+        throw new functions.https.HttpsError("permission-denied", "You must be an admin to call this function.");
+    }
+
+    const db = admin.firestore();
+    const collectionsToFetch = [
+        "leads", "clients", "activities",
+        "contacts", "users", "teams",
+        "units", "branches", "policies",
+    ];
+    
+    const data = {};
+
+    for (const collectionName of collectionsToFetch) {
+        try {
+            const snapshot = await db.collection(collectionName).get();
+            const docs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            
+            if (collectionName === "users") {
+                data["allUsers"] = docs;
+            } else {
+                data[collectionName] = docs;
+            }
+        } catch (error) {
+            console.error(`Error fetching collection '${collectionName}':`, error);
+            // If one collection fails, we can decide to either throw an error
+            // or return partial data. For now, let's throw.
+            throw new functions.https.HttpsError("internal", `Failed to fetch data for ${collectionName}.`, error.message);
+        }
+    }
+
+    return data;
 });
+
+
+// Export leaderboard and notification functions
+exports.scheduledLeaderboardUpdate = leaderboard.scheduledLeaderboardUpdate;
+exports.activityNotifications = notifications.activityNotifications;
+
+// Export troubleshooting functions
+exports.forceRefreshClaims = troubleshoot.forceRefreshClaims;
+exports.debugAdminDashboard = troubleshoot.debugAdminDashboard;

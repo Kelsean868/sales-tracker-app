@@ -1,8 +1,18 @@
 import React, { useState } from 'react';
-import { X, User, Phone, Mail, Calendar } from 'lucide-react';
+import { X, User, Phone, Mail, Calendar, Briefcase, Home, DollarSign } from 'lucide-react';
 
 const AddPersonModal = ({ isOpen, onClose, onSave }) => {
-    const [personData, setPersonData] = useState({ name: '', email: '', phone: '', dob: '' });
+    const getInitialState = () => ({
+        name: '',
+        email: '',
+        phone: '',
+        dob: '',
+        occupation: '',
+        employer: '',
+        monthlyIncome: ''
+    });
+
+    const [personData, setPersonData] = useState(getInitialState());
 
     if (!isOpen) return null;
 
@@ -15,7 +25,7 @@ const AddPersonModal = ({ isOpen, onClose, onSave }) => {
         e.preventDefault();
         onSave(personData);
         onClose();
-        setPersonData({ name: '', email: '', phone: '', dob: '' }); // Reset form
+        setPersonData(getInitialState()); // Reset form
     };
 
     return (
@@ -30,6 +40,9 @@ const AddPersonModal = ({ isOpen, onClose, onSave }) => {
                     <InputWithIcon icon={<Mail />} name="email" placeholder="Email Address" value={personData.email} onChange={handleChange} type="email" />
                     <InputWithIcon icon={<Phone />} name="phone" placeholder="Phone Number" value={personData.phone} onChange={handleChange} />
                     <InputWithIcon icon={<Calendar />} name="dob" label="Date of Birth" value={personData.dob} onChange={handleChange} type="date" />
+                    <InputWithIcon icon={<Briefcase />} name="occupation" placeholder="Occupation" value={personData.occupation} onChange={handleChange} />
+                    <InputWithIcon icon={<Home />} name="employer" placeholder="Employer" value={personData.employer} onChange={handleChange} />
+                    <InputWithIcon icon={<DollarSign />} name="monthlyIncome" placeholder="Monthly Income" value={personData.monthlyIncome} onChange={handleChange} type="number" />
                     <div className="flex justify-end space-x-3 pt-4">
                         <button type="button" onClick={onClose} className="px-5 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500">Cancel</button>
                         <button type="submit" className="px-5 py-2 rounded-md font-semibold text-gray-900 bg-amber-500 hover:bg-amber-400">Create</button>

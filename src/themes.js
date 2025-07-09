@@ -1,0 +1,47 @@
+export const themes = {
+  dark: {
+    name: 'Dark',
+    colors: {
+      '--background': '#1a202c',
+      '--foreground': '#ffffff',
+      '--card': '#2d3748',
+      '--card-foreground': '#ffffff',
+      '--primary': '#4299e1',
+      '--primary-foreground': '#ffffff',
+      '--secondary': '#a0aec0',
+      '--secondary-foreground': '#1a202c',
+      '--accent': '#f56565',
+      '--accent-foreground': '#ffffff',
+    },
+  },
+  light: {
+    name: 'Light',
+    colors: {
+      '--background': '#f7fafc',
+      '--foreground': '#1a202c',
+      '--card': '#ffffff',
+      '--card-foreground': '#1a202c',
+      '--primary': '#2b6cb0',
+      '--primary-foreground': '#ffffff',
+      '--secondary': '#718096',
+      '--secondary-foreground': '#ffffff',
+      '--accent': '#c53030',
+      '--accent-foreground': '#ffffff',
+    },
+  },
+  tritanopia: {
+    name: 'Tritanopia',
+    colors: {
+      '--background': '#f7fafd',
+      '--foreground': '#000000',
+      '--card': '#ffffff',
+      '--card-foreground': '#000000',
+      '--primary': '#ff7900',
+      '--primary-foreground': '#000000',
+      '--secondary': '#00b8d4',
+      '--secondary-foreground': '#000000',
+      '--accent': '#d4007a',
+      '--accent-foreground': '#ffffff',
+    },
+  },
+};

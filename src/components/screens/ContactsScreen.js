@@ -1,28 +1,51 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Phone, Mail, Building, UserPlus, Calendar } from 'lucide-react';
 import Card from '../ui/Card';
+import FilterSortPanel from '../ui/FilterSortPanel';
 
 const ContactsScreen = ({ contacts }) => {
-    // Memoize the sorted contacts to prevent re-sorting on every render
+    const [sort, setSort] = useState({ field: 'name', direction: 'asc' });
+
     const sortedContacts = useMemo(() => {
         if (!contacts) return [];
-        // Create a copy before sorting to avoid mutating the original prop array
+        
         return [...contacts].sort((a, b) => {
-            // CORRECTED: Add a fallback for contacts that might not have a name
-            const nameA = a.name || '';
-            const nameB = b.name || '';
-            return nameA.localeCompare(nameB);
+            const fieldA = a[sort.field] || '';
+            const fieldB = b[sort.field] || '';
+            
+            let comparison = 0;
+            if (fieldA > fieldB) {
+                comparison = 1;
+            } else if (fieldA < fieldB) {
+                comparison = -1;
+            }
+
+            return sort.direction === 'desc' ? comparison * -1 : comparison;
         });
-    }, [contacts]);
+    }, [contacts, sort]);
+
+    const sortOptions = [
+        { value: 'name', label: 'Name' },
+        { value: 'createdAt', label: 'Date Created' },
+    ];
 
     return (
-        <div className="p-4">
-            <div className="flex justify-between items-center mb-6">
+        <div className="p-4 space-y-4">
+            <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold text-white">Contacts</h1>
                 <button className="bg-amber-500 text-white p-2 rounded-full shadow-lg hover:bg-amber-600 transition-colors">
                     <UserPlus size={24} />
                 </button>
             </div>
+            
+            <FilterSortPanel 
+                filterOptions={[]}
+                sortOptions={sortOptions}
+                filter={{}}
+                setFilter={() => {}}
+                sort={sort}
+                setSort={setSort}
+            />
 
             {sortedContacts.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

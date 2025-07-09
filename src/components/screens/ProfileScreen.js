@@ -2,8 +2,10 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { doc, updateDoc, collection, onSnapshot, query, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase, LogOut, User, GitCompare } from 'lucide-react';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase, LogOut, User, GitCompare, Palette } from 'lucide-react';
 import { USER_ROLES } from '../../constants';
+import { themes } from '../../themes';
 
 const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storage, onOpenAddUserModal, onOpenEditUserModal, addToast, onLogout }) => {
     const [activeTab, setActiveTab] = useState('profile');
@@ -20,6 +22,7 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
     const [newOrgUnit, setNewOrgUnit] = useState({ name: '', type: '' });
 
     const auth = getAuth();
+    const functions = getFunctions();
 
     const managementRoles = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.UNIT_MANAGER];
     const canManage = user && managementRoles.includes(user.role);
@@ -106,6 +109,17 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
             }
             current[keys[keys.length - 1]] = val;
             return newSettings;
+        });
+    };
+
+    const handleThemeChange = (themeKey) => {
+        setSettings(prev => ({ ...prev, theme: themeKey }));
+        
+        const root = window.document.documentElement;
+        const theme = themes[themeKey];
+        
+        Object.keys(theme.colors).forEach(key => {
+            root.style.setProperty(key, theme.colors[key]);
         });
     };
 
@@ -230,6 +244,34 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
 
     const renderSettingsTab = () => (
         <div className="space-y-6">
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 flex items-center"><Palette className="mr-2" /> Appearance</h3>
+                 <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">Theme</label>
+                    <div className="grid grid-cols-3 gap-4">
+                        {Object.entries(themes).map(([key, theme]) => (
+                             <button
+                                key={key}
+                                onClick={() => handleThemeChange(key)}
+                                disabled={!isEditing}
+                                className={`p-4 rounded-lg border-2 ${settings.theme === key ? 'border-amber-500' : 'border-gray-600'} transition-all disabled:opacity-50`}
+                            >
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-semibold">{theme.name}</span>
+                                    {settings.theme === key && <ShieldCheck className="w-5 h-5 text-amber-500" />}
+                                </div>
+                                <div className="flex gap-1">
+                                    <div className="w-1/4 h-8 rounded" style={{ backgroundColor: theme.colors['--background'] }}></div>
+                                    <div className="w-1/4 h-8 rounded" style={{ backgroundColor: theme.colors['--primary'] }}></div>
+                                    <div className="w-1/4 h-8 rounded" style={{ backgroundColor: theme.colors['--secondary'] }}></div>
+                                    <div className="w-1/4 h-8 rounded" style={{ backgroundColor: theme.colors['--accent'] }}></div>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
             <div className="space-y-4">
                 <h3 className="text-lg font-semibold border-b border-gray-700 pb-2">Preferences</h3>
                 <div>

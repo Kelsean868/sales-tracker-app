@@ -1,76 +1,96 @@
 import React, { useState, useMemo } from 'react';
 import { Search, User, Phone, Mail, Briefcase, Shield, DollarSign } from 'lucide-react';
 import Card from '../ui/Card';
+import FilterSortPanel from '../ui/FilterSortPanel';
+import { POLICY_STATUSES } from '../../constants';
 
 const PortfolioScreen = ({ clients = [], policies = [], onSelectClient, onSelectPolicy }) => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeFilter, setActiveFilter] = useState('All');
+    const [filter, setFilter] = useState({ itemType: 'All', policyStatus: 'all' });
+    const [sort, setSort] = useState({ field: 'name', direction: 'asc' });
 
-    const filteredItems = useMemo(() => {
-        let items = [];
-        if (activeFilter === 'All') {
-            items = [
-                ...clients.map(c => ({ ...c, itemType: 'client' })),
-                ...policies.map(p => ({ ...p, itemType: 'policy' }))
-            ];
-        } else if (activeFilter === 'Clients') {
-            items = clients.map(c => ({ ...c, itemType: 'client' }));
-        } else if (activeFilter === 'Policies') {
-            items = policies.map(p => ({ ...p, itemType: 'policy' }));
+    const combinedItems = useMemo(() => {
+        return [
+            ...clients.map(c => ({ ...c, itemType: 'Client', sortName: c.name.toLowerCase() })),
+            ...policies.map(p => ({ ...p, itemType: 'Policy', sortName: p.policyNumber, createdAt: p.inforcedDate }))
+        ];
+    }, [clients, policies]);
+
+    const filteredAndSortedItems = useMemo(() => {
+        let items = [...combinedItems];
+
+        if (filter.itemType !== 'All') {
+            items = items.filter(item => item.itemType === filter.itemType);
         }
 
-        if (!searchTerm) {
-            return items;
+        if (filter.policyStatus !== 'all') {
+            items = items.filter(item => item.itemType !== 'Policy' || item.status === filter.policyStatus);
         }
 
-        return items.filter(item => {
+        if (searchTerm) {
             const lowercasedSearchTerm = searchTerm.toLowerCase();
-            if (item.itemType === 'client') {
-                return item.name.toLowerCase().includes(lowercasedSearchTerm);
-            }
-            if (item.itemType === 'policy') {
-                const ownerName = item.owner?.name?.toLowerCase() || '';
-                const insuredName = item.insured?.name?.toLowerCase() || '';
-                const payorName = item.payor?.name?.toLowerCase() || '';
-                const beneficiaryName = typeof item.beneficiary === 'string' ? item.beneficiary.toLowerCase() : item.beneficiary?.name?.toLowerCase() || '';
+            items = items.filter(item => {
+                if (item.itemType === 'Client') {
+                    return item.name.toLowerCase().includes(lowercasedSearchTerm);
+                }
+                if (item.itemType === 'Policy') {
+                    const ownerName = item.owner?.name?.toLowerCase() || '';
+                    const insuredName = item.insured?.name?.toLowerCase() || '';
+                    const payorName = item.payor?.name?.toLowerCase() || '';
+                    const beneficiaryName = typeof item.beneficiary === 'string' ? item.beneficiary.toLowerCase() : item.beneficiary?.name?.toLowerCase() || '';
 
-                return item.policyNumber.toLowerCase().includes(lowercasedSearchTerm) ||
-                       ownerName.includes(lowercasedSearchTerm) ||
-                       insuredName.includes(lowercasedSearchTerm) ||
-                       payorName.includes(lowercasedSearchTerm) ||
-                       beneficiaryName.includes(lowercasedSearchTerm);
-            }
-            return false;
+                    return item.policyNumber.toLowerCase().includes(lowercasedSearchTerm) ||
+                        ownerName.includes(lowercasedSearchTerm) ||
+                        insuredName.includes(lowercasedSearchTerm) ||
+                        payorName.includes(lowercasedSearchTerm) ||
+                        beneficiaryName.includes(lowercasedSearchTerm);
+                }
+                return false;
+            });
+        }
+        
+        items.sort((a, b) => {
+            const fieldA = a[sort.field] || (sort.field === 'name' ? a.sortName : '');
+            const fieldB = b[sort.field] || (sort.field === 'name' ? b.sortName : '');
+
+            let comparison = 0;
+            if (fieldA > fieldB) comparison = 1;
+            else if (fieldA < fieldB) comparison = -1;
+            
+            return sort.direction === 'desc' ? comparison * -1 : comparison;
         });
-    }, [clients, policies, searchTerm, activeFilter]);
+
+        return items;
+    }, [combinedItems, searchTerm, filter, sort]);
+    
+    const filterOptions = [
+        { name: 'itemType', label: 'Type', options: ['Clients', 'Policies'] },
+        { name: 'policyStatus', label: 'Policy Status', options: Object.values(POLICY_STATUSES) }
+    ];
+
+    const sortOptions = [
+        { value: 'name', label: 'Name / Number' },
+        { value: 'createdAt', label: 'Date Created' },
+    ];
 
     return (
         <div className="space-y-4">
             <h1 className="text-2xl font-bold">Portfolio</h1>
 
-            <div className="flex space-x-2">
-                <FilterButton
-                    label="All"
-                    isActive={activeFilter === 'All'}
-                    onClick={() => setActiveFilter('All')}
-                />
-                <FilterButton
-                    label="Clients"
-                    isActive={activeFilter === 'Clients'}
-                    onClick={() => setActiveFilter('Clients')}
-                />
-                <FilterButton
-                    label="Policies"
-                    isActive={activeFilter === 'Policies'}
-                    onClick={() => setActiveFilter('Policies')}
-                />
-            </div>
+            <FilterSortPanel 
+                filterOptions={filterOptions}
+                sortOptions={sortOptions}
+                filter={filter}
+                setFilter={setFilter}
+                sort={sort}
+                setSort={setSort}
+            />
 
             <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 <input
                     type="text"
-                    placeholder={`Search ${activeFilter.toLowerCase()}...`}
+                    placeholder="Search portfolio..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full bg-gray-800 border-gray-700 rounded-md p-2 pl-10 focus:ring-amber-500 focus:border-amber-500"
@@ -78,32 +98,19 @@ const PortfolioScreen = ({ clients = [], policies = [], onSelectClient, onSelect
             </div>
 
             <div className="space-y-3">
-                {filteredItems.length > 0 ? (
-                    filteredItems.map(item =>
-                        item.itemType === 'client' ? 
+                {filteredAndSortedItems.length > 0 ? (
+                    filteredAndSortedItems.map(item =>
+                        item.itemType === 'Client' ? 
                         <ClientCard key={`client-${item.id}`} client={item} onClick={() => onSelectClient(item)} /> :
                         <PolicyCard key={`policy-${item.id}`} policy={item} onClick={() => onSelectPolicy(item)} />
                     )
                 ) : (
-                    <p className="text-center text-gray-500 pt-8">No {activeFilter.toLowerCase()} found.</p>
+                    <p className="text-center text-gray-500 pt-8">No items found.</p>
                 )}
             </div>
         </div>
     );
 };
-
-const FilterButton = ({ label, isActive, onClick }) => (
-    <button
-        onClick={onClick}
-        className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${
-            isActive 
-                ? 'bg-amber-500 text-gray-900' 
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-        }`}
-    >
-        {label}
-    </button>
-);
 
 const ClientCard = ({ client, onClick }) => (
     <Card onClick={onClick} className="cursor-pointer hover:border-amber-500 transition-colors">
