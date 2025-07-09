@@ -25,12 +25,14 @@ import ReportsScreen from './components/screens/ReportsScreen';
 import GoalsScreen from './components/screens/GoalsScreen';
 import ProfileScreen from './components/screens/ProfileScreen';
 import AddLeadModal from './components/modals/AddLeadModal';
+import AddContactModal from './components/modals/AddContactModal';
 import LeadDetailModal from './components/modals/LeadDetailModal';
 import ClientModal from './components/modals/ClientModal';
 import LogActivityModal from './components/modals/LogActivityModal';
 import PolicyModal from './components/modals/PolicyModal';
 import AddUserModal from './components/modals/AddUserModal';
 import EditUserModal from './components/modals/EditUserModal';
+import UniversalSearchModal from './components/modals/UniversalSearchModal';
 import { NotificationProvider, useNotification } from './context/NotificationContext';
 import { ACTIVITY_POINTS } from './constants';
 
@@ -91,12 +93,11 @@ const AuthScreen = () => {
 
 
 const AppContent = () => {
-    const [authReady, setAuthReady] = useState(false);
-    const [userReady, setUserReady] = useState(false);
     const [user, setUser] = useState(null);
-    const [userId, setUserId] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [activeScreen, setActiveScreen] = useState('DASHBOARD');
     
+    // Data states
     const [allUsers, setAllUsers] = useState([]);
     const [leads, setLeads] = useState([]);
     const [clients, setClients] = useState([]);
@@ -106,139 +107,113 @@ const AppContent = () => {
     const [units, setUnits] = useState([]);
     const [branches, setBranches] = useState([]);
 
+    // Modal states
     const [isProfileOpen, setProfileOpen] = useState(false);
     const [isAddLeadModalOpen, setAddLeadModalOpen] = useState(false);
+    const [isAddContactModalOpen, setAddContactModalOpen] = useState(false);
     const [isLeadDetailModalOpen, setLeadDetailModalOpen] = useState(false);
     const [isClientModalOpen, setClientModalOpen] = useState(false);
     const [isLogActivityModalOpen, setLogActivityModalOpen] = useState(false);
     const [isPolicyModalOpen, setPolicyModalOpen] = useState(false);
     const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
     const [isEditUserModalOpen, setEditUserModalOpen] = useState(false);
+    const [isSearchModalOpen, setSearchModalOpen] = useState(false);
 
+    // Selected item states
     const [selectedLead, setSelectedLead] = useState(null);
-    const [selectedClient, ] = useState(null);
+    const [selectedClient, setSelectedClient] = useState(null);
     const [activityTarget, setActivityTarget] = useState(null);
-    const [selectedPolicy, ] = useState(null);
+    const [selectedPolicy, setSelectedPolicy] = useState(null);
     const [userToEdit, setUserToEdit] = useState(null);
 
     const { addToast } = useNotification();
 
+    // --- Authentication and User Data Effect ---
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
             if (firebaseUser && !firebaseUser.isAnonymous) {
-                setUserId(firebaseUser.uid);
+                const userDocRef = doc(db, 'users', firebaseUser.uid);
+                const unsubscribeUserDoc = onSnapshot(userDocRef, (docSnapshot) => {
+                    if (docSnapshot.exists()) {
+                        setUser({ uid: docSnapshot.id, ...docSnapshot.data() });
+                    } else {
+                        setUser(null); 
+                    }
+                    setLoading(false);
+                });
+                return () => unsubscribeUserDoc();
             } else {
                 setUser(null);
-                setUserId(null);
-                setAuthReady(true);
+                setLoading(false);
             }
         });
-        return () => unsubscribe();
+        return () => unsubscribeAuth();
     }, []);
 
+    // --- Data Fetching Effect ---
     useEffect(() => {
-        if (!userId) {
-            if(authReady) setUserReady(true);
+        if (!user) {
             return;
-        };
-
-        const userDocRef = doc(db, 'users', userId);
-        const unsubUser = onSnapshot(userDocRef, async (docSnapshot) => {
-            if (!docSnapshot.exists()) {
-                const newUser = {
-                    uid: userId,
-                    email: auth.currentUser.email,
-                    name: auth.currentUser.displayName || 'New Agent',
-                    role: 'sales_person',
-                    createdAt: serverTimestamp()
-                };
-                try {
-                    await setDoc(userDocRef, newUser);
-                } catch (error) {
-                    console.error("Error creating user document:", error);
-                }
-            } else {
-                setUser({ uid: docSnapshot.id, ...docSnapshot.data() });
-            }
-            setAuthReady(true);
-            setUserReady(true);
-        });
-        return () => unsubUser();
-    }, [userId, authReady]);
-
-    useEffect(() => {
-        if (!userReady || !user) return;
-
-        const managementRoles = ['super_admin', 'admin', 'branch_manager', 'unit_manager'];
-        let unsubscribes = [];
-
-        if (managementRoles.includes(user.role)) {
-            let leadsQuery, activitiesQuery, clientsQuery, contactsQuery;
-            
-            if (user.role === 'super_admin' || user.role === 'admin') {
-                leadsQuery = query(collectionGroup(db, 'leads'));
-                activitiesQuery = query(collectionGroup(db, 'activities'));
-                clientsQuery = query(collectionGroup(db, 'clients'));
-                contactsQuery = query(collectionGroup(db, 'contacts'));
-            } else if (user.role === 'branch_manager' && user.branchId) {
-                leadsQuery = query(collectionGroup(db, 'leads'), where('branchId', '==', user.branchId));
-                activitiesQuery = query(collectionGroup(db, 'activities'), where('branchId', '==', user.branchId));
-                clientsQuery = query(collectionGroup(db, 'clients'), where('branchId', '==', user.branchId));
-                contactsQuery = query(collectionGroup(db, 'contacts'), where('branchId', '==', user.branchId));
-            } else if (user.role === 'unit_manager' && user.unitId) {
-                leadsQuery = query(collectionGroup(db, 'leads'), where('unitId', '==', user.unitId));
-                activitiesQuery = query(collectionGroup(db, 'activities'), where('unitId', '==', user.unitId));
-                clientsQuery = query(collectionGroup(db, 'clients'), where('unitId', '==', user.unitId));
-                contactsQuery = query(collectionGroup(db, 'contacts'), where('unitId', '==', user.unitId));
-            } else {
-                leadsQuery = query(collection(db, 'users', user.uid, 'leads'));
-                activitiesQuery = query(collection(db, 'users', user.uid, 'activities'));
-                clientsQuery = query(collection(db, 'users', user.uid, 'clients'));
-                contactsQuery = query(collection(db, 'users', user.uid, 'contacts'));
-            }
-
-            unsubscribes.push(onSnapshot(leadsQuery, (snapshot) => setLeads(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-            unsubscribes.push(onSnapshot(activitiesQuery, (snapshot) => setActivities(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-            unsubscribes.push(onSnapshot(clientsQuery, (snapshot) => setClients(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-            unsubscribes.push(onSnapshot(contactsQuery, (snapshot) => setContacts(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-
-        } else {
-            const userCollections = {
-                leads: collection(db, 'users', user.uid, 'leads'),
-                clients: collection(db, 'users', user.uid, 'clients'),
-                activities: collection(db, 'users', user.uid, 'activities'),
-                contacts: collection(db, 'users', user.uid, 'contacts'),
-            };
-            unsubscribes = Object.entries(userCollections).map(([key, collectionRef]) => {
-                return onSnapshot(query(collectionRef), (snapshot) => {
-                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    switch (key) {
-                        case 'leads': setLeads(data); break;
-                        case 'clients': setClients(data); break;
-                        case 'activities': setActivities(data); break;
-                        case 'contacts': setContacts(data); break;
-                        default: break;
-                    }
-                });
-            });
         }
 
-        unsubscribes.push(onSnapshot(query(collection(db, 'users')), (snapshot) => setAllUsers(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-        unsubscribes.push(onSnapshot(query(collection(db, 'teams')), (snapshot) => setTeams(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-        unsubscribes.push(onSnapshot(query(collection(db, 'units')), (snapshot) => setUnits(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
-        unsubscribes.push(onSnapshot(query(collection(db, 'branches')), (snapshot) => setBranches(snapshot.docs.map(d => ({id: d.id, ...d.data()})))));
+        const managementRoles = ['super_admin', 'admin'];
 
-        return () => unsubscribes.forEach(unsub => unsub());
+        if (managementRoles.includes(user.role)) {
+            const getAdminData = httpsCallable(functions, 'getAdminDashboardData');
+            
+            getAdminData()
+                .then(result => {
+                    const { data } = result;
+                    setLeads(data.leads || []);
+                    setClients(data.clients || []);
+                    setActivities(data.activities || []);
+                    setContacts(data.contacts || []);
+                    setAllUsers(data.allUsers || []);
+                    setTeams(data.teams || []);
+                    setUnits(data.units || []);
+                    setBranches(data.branches || []);
+                })
+                .catch(error => {
+                    console.error("Error fetching admin data:", error);
+                    addToast(`Could not load admin dashboard: ${error.message}`, "error");
+                });
+            
+            return;
+        }
 
-    }, [userReady, user]);
+        let unsubscribes = [];
+        const createListener = (q, setter) => {
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                setter(snapshot.docs.map(d => ({id: d.id, ...d.data()})));
+            }, (error) => {
+                console.error(`Error in listener:`, error);
+            });
+            unsubscribes.push(unsubscribe);
+        };
 
+        createListener(query(collection(db, 'users', user.uid, 'leads')), setLeads);
+        createListener(query(collection(db, 'users', user.uid, 'contacts')), setContacts);
+        createListener(query(collection(db, 'users', user.uid, 'clients')), setClients);
+        createListener(query(collection(db, 'users', user.uid, 'activities')), setActivities);
+        
+        createListener(query(collection(db, 'users')), setAllUsers);
+        createListener(query(collection(db, 'teams')), setTeams);
+        createListener(query(collection(db, 'units')), setUnits);
+        createListener(query(collection(db, 'branches')), setBranches);
+
+        return () => {
+            unsubscribes.forEach(unsub => unsub());
+        };
+    }, [user, addToast]);
+
+    // --- Handler Functions ---
     const handleAddLead = async (leadData) => {
-        if (!userId || !user) return;
+        if (!user || !user.uid) return;
         try {
-            await addDoc(collection(db, 'users', userId, 'leads'), {
+            await addDoc(collection(db, 'users', user.uid, 'leads'), {
                 ...leadData,
                 createdAt: serverTimestamp(),
-                userId: userId,
+                userId: user.uid,
                 teamId: user.teamId || null,
                 unitId: user.unitId || null,
                 branchId: user.branchId || null,
@@ -249,6 +224,21 @@ const AppContent = () => {
             addToast('Failed to add lead.', 'error');
         }
     };
+    
+    const handleAddContact = async (contactData) => {
+        if (!user || !user.uid) return;
+        try {
+            await addDoc(collection(db, 'users', user.uid, 'contacts'), {
+                ...contactData,
+                createdAt: serverTimestamp(),
+                userId: user.uid,
+            });
+            addToast('Contact added successfully!', 'success');
+        } catch (error) {
+            console.error("Error adding contact: ", error);
+            addToast('Failed to add contact.', 'error');
+        }
+    };
 
     const handleLogActivity = async (activityData) => {
         const targetUserId = activityData.logForUserId;
@@ -256,12 +246,9 @@ const AppContent = () => {
             addToast('Could not determine user to log activity for.', 'error');
             return;
         }
-
         const targetUser = allUsers.find(u => u.id === targetUserId);
-
         try {
-            const activitiesCollectionRef = collection(db, 'users', targetUserId, 'activities');
-            await addDoc(activitiesCollectionRef, {
+            await addDoc(collection(db, 'users', targetUserId, 'activities'), {
                 type: activityData.type,
                 details: activityData.details,
                 relatedTo: activityData.relatedTo,
@@ -273,7 +260,7 @@ const AppContent = () => {
                 teamId: targetUser?.teamId || null,
                 unitId: targetUser?.unitId || null,
                 branchId: targetUser?.branchId || null,
-                loggedBy: userId,
+                loggedBy: user.uid,
             });
             addToast('Activity logged successfully!', 'success');
         } catch (error) {
@@ -325,6 +312,9 @@ const AppContent = () => {
         setUser(updatedUserData);
     }, []);
 
+    const handleSearchClick = () => setSearchModalOpen(true);
+    const handleCloseSearch = () => setSearchModalOpen(false);
+
     const renderActiveScreen = () => {
         switch (activeScreen) {
             case 'DASHBOARD': return <Dashboard activities={activities} leads={leads} currentUser={user} />;
@@ -334,12 +324,12 @@ const AppContent = () => {
             case 'CONTACTS': return <ContactsScreen contacts={contacts} />;
             case 'LEADERBOARD': return <LeaderboardScreen allUsers={allUsers} activities={activities} />;
             case 'REPORTS': return <ReportsScreen activities={activities} leads={leads} allUsers={allUsers} currentUser={user} />;
-            case 'GOALS': return <GoalsScreen activities={activities} userId={userId} currentUser={user} allUsers={allUsers} />;
+            case 'GOALS': return <GoalsScreen activities={activities} userId={user?.uid} currentUser={user} allUsers={allUsers} />;
             default: return <Dashboard activities={activities} leads={leads} currentUser={user} />;
         }
     };
 
-    if (!userReady) {
+    if (loading) {
         return (
             <div className="bg-gray-900 text-white min-h-screen flex justify-center items-center">
                 <p>Initializing...</p>
@@ -353,17 +343,20 @@ const AppContent = () => {
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
-            <TopHeader user={user} onProfileClick={() => setProfileOpen(true)} />
+            <TopHeader user={user} onProfileClick={() => setProfileOpen(true)} onSearchClick={handleSearchClick} />
             <main className="p-4 pb-20">{renderActiveScreen()}</main>
-            {/* FIX: Corrected prop name from onLogActivity to onAddActivity */}
-            <SpeedDial onAddLead={() => setAddLeadModalOpen(true)} onAddActivity={() => setLogActivityModalOpen(true)} />
+            <SpeedDial 
+                onAddLead={() => setAddLeadModalOpen(true)} 
+                onAddContact={() => setAddContactModalOpen(true)}
+                onAddActivity={() => setLogActivityModalOpen(true)} 
+            />
             <BottomNav activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
 
             <ProfileScreen 
                 isOpen={isProfileOpen} 
                 onClose={() => setProfileOpen(false)}
                 user={user}
-                userId={userId}
+                userId={user.uid}
                 onUpdateUser={handleUpdateUser}
                 db={db}
                 storage={storage}
@@ -373,6 +366,7 @@ const AppContent = () => {
                 onLogout={handleLogout}
             />
             <AddLeadModal isOpen={isAddLeadModalOpen} onClose={() => setAddLeadModalOpen(false)} onAddLead={handleAddLead} />
+            <AddContactModal isOpen={isAddContactModalOpen} onClose={() => setAddContactModalOpen(false)} onAddContact={handleAddContact} />
             <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setAddUserModalOpen(false)} onAddUser={handleCreateUser} />
             <EditUserModal 
                 isOpen={isEditUserModalOpen}
@@ -394,6 +388,7 @@ const AppContent = () => {
                 allUsers={allUsers}
             />
             <PolicyModal isOpen={isPolicyModalOpen} onClose={() => setPolicyModalOpen(false)} policy={selectedPolicy} clientId={selectedClient?.id} />
+            <UniversalSearchModal isOpen={isSearchModalOpen} onClose={handleCloseSearch} />
         </div>
     );
 };

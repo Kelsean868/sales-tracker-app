@@ -1,141 +1,240 @@
-/**
- * This file contains the backend Cloud Functions for the application.
- * It now uses the recommended v2 syntax.
- */
-
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const {onCall} = require("firebase-functions/v2/https");
+const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 
 admin.initializeApp();
 
-// =================================================================
-// addUser
-// =================================================================
+// --- User Management Functions ---
 exports.addUser = onCall(async (request) => {
-  // --- DEBUGGING LOG (FIXED) ---
-  console.log("--- addUser function triggered ---");
-  console.log("Received data:", request.data);
-
-  // CRITICAL FIX: Extract safe properties before logging
-  const callerUID = request.auth ? request.auth.uid : "No auth context";
-  console.log("Caller UID:", callerUID);
-
-  // --- Security Check ---
-  if (!request.auth) {
-    throw new HttpsError(
-        "unauthenticated",
-        "You must be authenticated to perform this action.",
-    );
+  const {data, auth} = request;
+  if (!auth) {
+    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
   }
-  const requesterUid = request.auth.uid;
-  const userDocRef = admin.firestore().collection("users").doc(requesterUid);
-
+  const callerUid = auth.uid;
+  const userRecord = await admin.firestore().collection("users").doc(callerUid).get();
+  if (!userRecord.exists || userRecord.data().role !== "super_admin") {
+    throw new functions.https.HttpsError("permission-denied", "Only super admins can add new users.");
+  }
+  const {email, password, name, role, branch, unit} = data;
   try {
-    const userDoc = await userDocRef.get();
-    if (!userDoc.exists || userDoc.data().role !== "super_admin") {
-      throw new HttpsError(
-          "permission-denied",
-          "You must be a Super Admin to create users.",
-      );
-    }
-  } catch (error) {
-    console.error("Error verifying permissions:", error);
-    throw new HttpsError(
-        "internal", "Could not verify admin permissions.",
-    );
-  }
-
-  const {
-    email,
-    name,
-    role,
-  } = request.data;
-
-  // --- Input Validation ---
-  if (!email || !name || !role) {
-    throw new HttpsError(
-        "invalid-argument",
-        "Please provide an email, name, and role.",
-    );
-  }
-  try {
-    // --- Create User in Firebase Authentication ---
-    const userRecord = await admin.auth().createUser({
+    const userAuth = await admin.auth().createUser({
       email: email,
+      password: password,
       displayName: name,
-      password: "tempPassword" + Math.random().toString(36).slice(-8),
     });
-    console.log("Successfully created new user in Auth:", userRecord.uid);
-
-    // --- Create User Document in Firestore ---
-    const newUserDocRef = admin.firestore().collection("users").doc(userRecord.uid);
-    await newUserDocRef.set({
-      uid: userRecord.uid,
-      email: email,
+    await admin.firestore().collection("users").doc(userAuth.uid).set({
       name: name,
+      email: email,
       role: role,
+      branch: branch,
+      unit: unit,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    console.log("Successfully created user document for:", userRecord.uid);
-
-    const successMessage = `Successfully created user ${name}.`;
-    return {
-      result: successMessage,
-    };
+    return {result: `User ${email} created successfully.`};
   } catch (error) {
-    console.error("Error during user creation process:", error);
-    throw new HttpsError(
-        "internal", "An error occurred while creating the user.",
-    );
+    console.error("Error creating new user:", error);
+    throw new functions.https.HttpsError("internal", "Error creating new user.", error);
   }
 });
 
-
-/**
- * =================================================================
- * editUser
- * =================================================================
- * An "onCall" Cloud Function to securely edit an existing user's role and assignments.
- */
 exports.editUser = onCall(async (request) => {
-  // --- Security Check ---
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "You must be authenticated.");
+  const {data, auth} = request;
+  if (!auth) {
+    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
   }
-
-  const requesterUid = request.auth.uid;
-  const userDocRef = admin.firestore().collection("users").doc(requesterUid);
+  const callerUid = auth.uid;
+  const userRecord = await admin.firestore().collection("users").doc(callerUid).get();
+  if (!userRecord.exists || userRecord.data().role !== "super_admin") {
+    throw new functions.https.HttpsError("permission-denied", "Only super admins can edit users.");
+  }
+  const {uid, name, role, branch, unit} = data;
   try {
-    const userDoc = await userDocRef.get();
-    if (!userDoc.exists || userDoc.data().role !== "super_admin") {
-      throw new HttpsError(
-          "permission-denied",
-          "You must be a Super Admin to edit users.",
-      );
+    await admin.firestore().collection("users").doc(uid).update({
+      name: name,
+      role: role,
+      branch: branch,
+      unit: unit,
+    });
+    return {result: `User ${name} updated successfully.`};
+  } catch (error) {
+    console.error("Error updating user:", error);
+    throw new functions.https.HttpsError("internal", "Error updating user.", error);
+  }
+});
+
+// --- Goal Update Functions ---
+exports.updateGoalOnActivityLog = onDocumentCreated("users/{userId}/activities/{activityId}", async (event) => {
+  const snap = event.data;
+  if (!snap) return;
+  const activity = snap.data();
+  const {userId, type, points = 0} = activity;
+  if (!userId) return null;
+  const goalsRef = admin.firestore().collection("goals").where("userId", "==", userId).where("status", "==", "active");
+  const goalsSnapshot = await goalsRef.get();
+  if (goalsSnapshot.empty) return null;
+  const batch = admin.firestore().batch();
+  goalsSnapshot.forEach((doc) => {
+    const progress = doc.data().progress || {};
+    progress[type] = (progress[type] || 0) + 1;
+    progress["points"] = (progress["points"] || 0) + points;
+    batch.update(doc.ref, {progress});
+  });
+  return batch.commit();
+});
+
+exports.updateGoalOnLeadAdd = onDocumentCreated("users/{userId}/leads/{leadId}", async (event) => {
+  const snap = event.data;
+  if (!snap) return;
+  const lead = snap.data();
+  const userId = lead.userId;
+  if (!userId) return null;
+  const goalsRef = admin.firestore().collection("goals").where("userId", "==", userId).where("status", "==", "active");
+  const goalsSnapshot = await goalsRef.get();
+  if (goalsSnapshot.empty) return null;
+  const batch = admin.firestore().batch();
+  goalsSnapshot.forEach((doc) => {
+    const progress = doc.data().progress || {};
+    progress["leads"] = (progress["leads"] || 0) + 1;
+    batch.update(doc.ref, {progress});
+  });
+  return batch.commit();
+});
+
+exports.updateGoalOnPolicyAdd = onDocumentCreated("users/{userId}/policies/{policyId}", async (event) => {
+  const snap = event.data;
+  if (!snap) return;
+  const policy = snap.data();
+  const {agentId: userId, premium = 0} = policy;
+  if (!userId) return null;
+  const goalsRef = admin.firestore().collection("goals").where("userId", "==", userId).where("status", "==", "active");
+  const goalsSnapshot = await goalsRef.get();
+  if (goalsSnapshot.empty) return null;
+  const batch = admin.firestore().batch();
+  goalsSnapshot.forEach((doc) => {
+    const progress = doc.data().progress || {};
+    progress["policies"] = (progress["policies"] || 0) + 1;
+    progress["premium"] = (progress["premium"] || 0) + premium;
+    batch.update(doc.ref, {progress});
+  });
+  return batch.commit();
+});
+
+// --- Search Utility Functions ---
+exports.processNewLead = onDocumentCreated("users/{userId}/leads/{leadId}", (event) => {
+  const leadData = event.data.data();
+  if (leadData && leadData.name) {
+    return event.data.ref.update({
+      name_lowercase: leadData.name.toLowerCase(),
+    });
+  }
+  return null;
+});
+
+exports.processNewClient = onDocumentCreated("users/{userId}/clients/{clientId}", (event) => {
+  const clientData = event.data.data();
+  if (clientData && clientData.name) {
+    return event.data.ref.update({
+      name_lowercase: clientData.name.toLowerCase(),
+    });
+  }
+  return null;
+});
+
+// --- Search Function ---
+exports.universalSearch = onCall(async (request) => {
+  const {data, auth} = request;
+  if (!auth) {
+    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+  const searchTerm = data.searchTerm.toLowerCase();
+  if (!searchTerm || searchTerm.length < 2) {
+    throw new functions.https.HttpsError("invalid-argument", "Search term must be at least 2 characters long.");
+  }
+  const uid = auth.uid;
+  const userDoc = await admin.firestore().collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "User not found.");
+  }
+  const userData = userDoc.data();
+  const {role, unitId, branchId} = userData;
+  const db = admin.firestore();
+  const results = {
+    leads: [],
+    clients: [],
+    policies: [],
+  };
+  const allLeadsSnapshot = await db.collectionGroup("leads").get();
+  allLeadsSnapshot.forEach((doc) => {
+    const lead = doc.data();
+    if (lead.name_lowercase && lead.name_lowercase.startsWith(searchTerm)) {
+      if (role === "super_admin" || role === "admin" ||
+         (role === "branch_manager" && lead.branchId === branchId) ||
+         (role === "unit_manager" && lead.unitId === unitId) ||
+         (role === "sales_person" && lead.userId === uid)) {
+        results.leads.push({id: doc.id, ...lead});
+      }
     }
-  } catch (error) {
-    console.error("Error verifying edit permissions:", error);
-    throw new HttpsError("internal", "Could not verify admin permissions.");
-  }
+  });
+  const allClientsSnapshot = await db.collectionGroup("clients").get();
+  allClientsSnapshot.forEach((doc) => {
+    const client = doc.data();
+    if (client.name_lowercase && client.name_lowercase.startsWith(searchTerm)) {
+      if (role === "super_admin" || role === "admin" ||
+         (role === "branch_manager" && client.branchId === branchId) ||
+         (role === "unit_manager" && client.unitId === unitId) ||
+         (role === "sales_person" && client.userId === uid)) {
+        results.clients.push({id: doc.id, ...client});
+      }
+    }
+  });
+  const allPoliciesSnapshot = await db.collectionGroup("policies").get();
+  allPoliciesSnapshot.forEach((doc) => {
+    const policy = doc.data();
+    if (policy.policyNumber && policy.policyNumber.toLowerCase().startsWith(searchTerm)) {
+      if (role === "super_admin" || role === "admin" ||
+         (role === "branch_manager" && policy.branchId === branchId) ||
+         (role === "unit_manager" && policy.unitId === unitId) ||
+         (role === "sales_person" && policy.agentId === uid)) {
+        results.policies.push({id: doc.id, ...policy});
+      }
+    }
+  });
+  return results;
+});
 
-  // --- Input Validation ---
-  const {uidToEdit, updates} = request.data;
-  if (!uidToEdit || !updates) {
-    throw new HttpsError(
-        "invalid-argument",
-        "Please provide a user ID and the data to update.",
-    );
+// --- Admin Data Fetching Function ---
+exports.getAdminDashboardData = onCall(async (request) => {
+  const {auth} = request;
+  if (!auth) {
+    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
   }
-
-  try {
-    // --- Update User Document in Firestore ---
-    const targetUserDocRef = admin.firestore().collection("users").doc(uidToEdit);
-    await targetUserDocRef.update(updates);
-
-    console.log(`Successfully updated user ${uidToEdit}`);
-    return {result: `Successfully updated user.`};
-  } catch (error) {
-    console.error(`Error updating user ${uidToEdit}:`, error);
-    throw new HttpsError("internal", "An error occurred while updating the user.");
+  const userDoc = await admin.firestore().collection("users").doc(auth.uid).get();
+  if (!userDoc.exists || userDoc.data().role !== "super_admin") {
+    throw new functions.https.HttpsError("permission-denied", "You must be a super admin to call this function.");
   }
+  const db = admin.firestore();
+  const collectionsToFetch = ["leads", "clients", "activities", "contacts", "users", "teams", "units", "branches"];
+  const promises = collectionsToFetch.map((col) => db.collectionGroup(col).get());
+  const [
+    leadsSnapshot,
+    clientsSnapshot,
+    activitiesSnapshot,
+    contactsSnapshot,
+    usersSnapshot,
+    teamsSnapshot,
+    unitsSnapshot,
+    branchesSnapshot,
+  ] = await Promise.all(promises);
+  const extractData = (snapshot) => snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()}));
+  return {
+    leads: extractData(leadsSnapshot),
+    clients: extractData(clientsSnapshot),
+    activities: extractData(activitiesSnapshot),
+    contacts: extractData(contactsSnapshot),
+    allUsers: extractData(usersSnapshot),
+    teams: extractData(teamsSnapshot),
+    units: extractData(unitsSnapshot),
+    branches: extractData(branchesSnapshot),
+  };
 });

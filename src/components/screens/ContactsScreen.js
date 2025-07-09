@@ -1,55 +1,62 @@
-import React, { useState, useMemo } from 'react';
-import { Download, Filter, UserPlus } from 'lucide-react';
-import { CONTACT_CATEGORIES } from '../../constants';
+import React, { useMemo } from 'react';
+import { Phone, Mail, Building, UserPlus } from 'lucide-react';
 import Card from '../ui/Card';
 
-const ContactsScreen = ({ contacts, onAddContact, onEditContact }) => {
-    // const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
-    // const [queryState, setQueryState] = useState({ filters: [], sorts: [] });
-
-    const filteredAndSortedContacts = useMemo(() => {
-        // Placeholder for filter/sort logic
-        return contacts.sort((a, b) => a.fullName.localeCompare(b.fullName));
+const ContactsScreen = ({ contacts }) => {
+    // Memoize the sorted contacts to prevent re-sorting on every render
+    const sortedContacts = useMemo(() => {
+        if (!contacts) return [];
+        // Create a copy before sorting to avoid mutating the original prop array
+        return [...contacts].sort((a, b) => {
+            // CORRECTED: Add a fallback for contacts that might not have a name
+            const nameA = a.name || '';
+            const nameB = b.name || '';
+            return nameA.localeCompare(nameB);
+        });
     }, [contacts]);
 
-    // const handleExport = () => {
-    //     const headers = {
-    //         fullName: "Full Name",
-    //         email: "Email",
-    //         contactNumber: "Phone",
-    //         category: "Category",
-    //         notes: "Notes"
-    //     };
-    //     // exportToCSV(filteredAndSortedContacts, headers, 'contacts_export');
-    // };
-
     return (
-        <div className="p-4 pt-20 pb-24">
-            <div className="flex justify-between items-center mb-4">
-                <h1 className="text-2xl font-bold text-white">Contacts</h1>
-                <div className="flex items-center gap-2">
-                    {/* <button onClick={handleExport} className="p-2 rounded-md bg-green-600 hover:bg-green-700 text-white"><Download className="w-5 h-5" /></button>
-                    <button onClick={() => setIsFilterPanelOpen(true)} className="p-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white"><Filter className="w-5 h-5" /></button> */}
-                    <button onClick={onAddContact} className="bg-amber-500 hover:bg-amber-600 text-white font-bold p-2 rounded-md flex items-center">
-                        <UserPlus className="w-5 h-5"/>
-                    </button>
-                </div>
+        <div className="p-4">
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-white">Contacts</h1>
+                <button className="bg-amber-500 text-white p-2 rounded-full shadow-lg hover:bg-amber-600 transition-colors">
+                    <UserPlus size={24} />
+                </button>
             </div>
-            
-            <div className="space-y-3">
-                {filteredAndSortedContacts.map(contact => (
-                    <Card key={contact.id} onClick={() => onEditContact(contact)}>
-                        <div className="flex justify-between items-center">
-                            <div>
-                                <p className="font-bold text-white text-lg">{contact.fullName}</p>
-                                <p className="text-sm text-gray-400">{contact.email || 'No email'}</p>
+
+            {sortedContacts.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {sortedContacts.map(contact => (
+                        <Card key={contact.id}>
+                            <div className="p-4">
+                                <h3 className="text-xl font-bold text-amber-400">{contact.name || 'No Name'}</h3>
+                                {contact.company && (
+                                    <div className="flex items-center mt-2 text-gray-400">
+                                        <Building size={16} className="mr-2" />
+                                        <span>{contact.company}</span>
+                                    </div>
+                                )}
+                                {contact.phone && (
+                                    <div className="flex items-center mt-2 text-gray-400">
+                                        <Phone size={16} className="mr-2" />
+                                        <a href={`tel:${contact.phone}`} className="hover:text-amber-400">{contact.phone}</a>
+                                    </div>
+                                )}
+                                {contact.email && (
+                                    <div className="flex items-center mt-2 text-gray-400">
+                                        <Mail size={16} className="mr-2" />
+                                        <a href={`mailto:${contact.email}`} className="hover:text-amber-400">{contact.email}</a>
+                                    </div>
+                                )}
                             </div>
-                             <p className="text-sm text-gray-300">{contact.category}</p>
-                        </div>
-                    </Card>
-                ))}
-            </div>
-            {/* <FilterSortPanel isOpen={isFilterPanelOpen} onClose={() => setIsFilterPanelOpen(false)} onApply={setQueryState} config={filterConfig} initialState={queryState} /> */}
+                        </Card>
+                    ))}
+                </div>
+            ) : (
+                <div className="text-center py-10">
+                    <p className="text-gray-400">You have no contacts yet.</p>
+                </div>
+            )}
         </div>
     );
 };

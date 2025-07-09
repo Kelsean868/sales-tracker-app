@@ -1,48 +1,46 @@
 import React from 'react';
-import { Search, Bell, User } from 'lucide-react';
+import { UserCircle, Bell, Search } from 'lucide-react';
 
-/**
- * TopHeader component
- * Displays the top bar of the application with search, notifications, and user profile.
- * @param {object} props - Component props
- * @param {object} props.user - The currently logged-in user object
- * @param {function} props.onProfileClick - Function to call when the profile icon is clicked
- * @returns {JSX.Element} The rendered header component
- */
-const TopHeader = ({ user, onProfileClick }) => {
-    // This component now gracefully handles the case where the user object is null during loading.
-    const userName = user ? user.name : 'User';
-    const userRole = user ? (user.role || 'sales_person').replace(/_/g, ' ') : 'Loading...';
-    const userPhotoURL = user ? user.photoURL : null;
+const TopHeader = ({ user, onProfileClick, onSearchClick }) => {
+    const getInitials = (name) => {
+        if (!name) return '';
+        const names = name.split(' ');
+        return names.map(n => n[0]).join('').toUpperCase();
+    };
 
     return (
-        <header className="bg-gray-800 shadow-md p-4 flex justify-between items-center sticky top-0 z-40">
-            {/* Left side: User Info */}
+        <header className="bg-gray-800 text-white p-4 flex justify-between items-center sticky top-0 z-30 shadow-lg">
             <div className="flex items-center">
-                <button onClick={onProfileClick} className="focus:outline-none focus:ring-2 focus:ring-amber-500 rounded-full">
-                    {userPhotoURL ? (
-                        <img src={userPhotoURL} alt="Profile" className="w-10 h-10 rounded-full object-cover" />
-                    ) : (
-                        <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center">
-                            <User className="text-gray-400" />
-                        </div>
-                    )}
-                </button>
-                <div className="ml-3">
-                    <h1 className="text-md font-bold text-white capitalize">{userName}</h1>
-                    <p className="text-xs text-gray-400 capitalize">{userRole}</p>
+                {user?.photoURL ? (
+                    <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full mr-3" />
+                ) : (
+                    <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center mr-3 text-lg font-bold">
+                        {getInitials(user?.name)}
+                    </div>
+                )}
+                <div>
+                    <h1 className="text-xl font-bold">{user?.name || 'Agent'}</h1>
+                    <p className="text-sm text-gray-400 capitalize">{user?.role?.replace('_', ' ') || 'Sales Person'}</p>
                 </div>
             </div>
-
-            {/* Right side: Actions */}
             <div className="flex items-center space-x-4">
-                <button className="text-gray-400 hover:text-white">
+                {/* NEW Search Button */}
+                <button 
+                    onClick={onSearchClick} 
+                    className="text-gray-300 hover:text-white transition-colors"
+                    aria-label="Open search"
+                >
                     <Search size={22} />
                 </button>
-                <button className="text-gray-400 hover:text-white relative">
+                <button className="relative text-gray-300 hover:text-white transition-colors">
                     <Bell size={22} />
-                    {/* Notification dot */}
-                    <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-gray-800"></span>
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                    </span>
+                </button>
+                <button onClick={onProfileClick} className="text-gray-300 hover:text-white transition-colors">
+                    <UserCircle size={22} />
                 </button>
             </div>
         </header>
