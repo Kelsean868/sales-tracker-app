@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Users, Target, Briefcase, TrendingUp, CheckCircle, Activity, Clock } from 'lucide-react';
+import { Users, Shield, DollarSign, CheckCircle, Activity, Clock, Phone, Mail, UserPlus, Briefcase } from 'lucide-react';
 import Card from '../ui/Card';
 
 const StatCard = ({ icon, label, value, color }) => (
@@ -28,6 +28,13 @@ const RecentActivityItem = ({ activity }) => {
         default: <Activity size={16} />
     };
 
+    const toDate = (timestamp) => {
+        if (timestamp?.toDate) {
+            return timestamp.toDate();
+        }
+        return new Date(timestamp);
+    };
+
     return (
         <div className="flex items-center p-3 hover:bg-gray-800 rounded-lg">
             <div className="text-amber-400 mr-3">
@@ -40,7 +47,7 @@ const RecentActivityItem = ({ activity }) => {
             <div className="text-right">
                 <p className="text-gray-500 text-xs flex items-center">
                     <Clock size={12} className="mr-1" />
-                    {new Date(activity.timestamp?.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {toDate(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
                 {activity.points > 0 && 
                     <p className="text-green-400 text-xs font-bold">+{activity.points} pts</p>
@@ -50,10 +57,52 @@ const RecentActivityItem = ({ activity }) => {
     );
 };
 
-const Dashboard = ({ activities, leads, currentUser }) => {
-    // --- DEBUGGING LINE ---
-    // Let's see what props the Dashboard component is receiving.
-    console.log("DEBUG: Dashboard component received leads:", leads);
+const LeadFunnelChart = ({ leads = [] }) => {
+    const funnelData = useMemo(() => {
+        const statuses = ['new', 'contacted', 'qualified', 'proposal', 'converted'];
+        const counts = statuses.reduce((acc, status) => {
+            acc[status] = 0;
+            return acc;
+        }, {});
+        leads.forEach(lead => {
+            if (lead.status && counts[lead.status.toLowerCase()] !== undefined) {
+                counts[lead.status.toLowerCase()]++;
+            }
+        });
+        return statuses.map(status => ({
+            status: status.charAt(0).toUpperCase() + status.slice(1),
+            count: counts[status]
+        }));
+    }, [leads]);
+
+    const maxCount = Math.max(...funnelData.map(d => d.count), 1);
+
+    return (
+        <Card>
+            <div className="p-4">
+                <h3 className="text-lg font-bold mb-4">Sales Funnel</h3>
+                <div className="space-y-3">
+                    {funnelData.map(({ status, count }) => (
+                        <div key={status} className="flex items-center">
+                            <p className="w-1/4 text-sm text-gray-400">{status}</p>
+                            <div className="w-3/4 bg-gray-700 rounded-full h-4">
+                                <div 
+                                    className="bg-blue-500 h-4 rounded-full flex items-center justify-end pr-2"
+                                    style={{ width: `${(count / maxCount) * 100}%` }}
+                                >
+                                   <span className="text-xs font-bold text-white">{count}</span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </Card>
+    );
+};
+
+
+const Dashboard = ({ activities = [], leads = [], policies = [], clients = [], currentUser }) => {
 
     const getGreeting = () => {
         const hour = new Date().getHours();
@@ -61,46 +110,73 @@ const Dashboard = ({ activities, leads, currentUser }) => {
         if (hour < 18) return 'Good Afternoon';
         return 'Good Evening';
     };
+    
+    const toDate = (timestamp) => {
+        if (!timestamp) return null;
+        if (timestamp.toDate) { // Firebase Timestamp object
+            return timestamp.toDate();
+        }
+        return new Date(timestamp); // ISO string
+    };
 
     const recentActivities = useMemo(() => {
         return [...activities]
-            .sort((a, b) => b.timestamp?.toDate() - a.timestamp?.toDate())
+            .sort((a, b) => toDate(b.timestamp) - toDate(a.timestamp))
             .slice(0, 5);
     }, [activities]);
     
-    // Calculate stats
-    const totalLeads = leads?.length || 0;
-    const totalClients = leads?.filter(lead => lead.status === 'Converted').length || 0;
-    const totalActivities = activities?.length || 0;
-    const conversionRate = totalLeads > 0 ? ((totalClients / totalLeads) * 100).toFixed(1) : 0;
+    const monthlyStats = useMemo(() => {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const isThisMonth = (date) => date ? toDate(date) >= startOfMonth : false;
+
+        const newLeads = leads.filter(l => isThisMonth(l.createdAt)).length;
+        const clientsConverted = clients.filter(c => isThisMonth(c.createdAt)).length;
+        const policiesSold = policies.filter(p => isThisMonth(p.inforcedDate)).length;
+        const totalPremium = policies.reduce((sum, p) => {
+            if(isThisMonth(p.inforcedDate)) {
+                return sum + (Number(p.premium) || 0);
+            }
+            return sum;
+        }, 0);
+
+        return { newLeads, clientsConverted, policiesSold, totalPremium };
+
+    }, [leads, clients, policies]);
+    
 
     return (
-        <div className="p-4">
-            <div className="mb-6">
+        <div className="space-y-6">
+            <div>
                 <h1 className="text-3xl font-bold text-white">{getGreeting()}, {currentUser?.name?.split(' ')[0]}!</h1>
-                <p className="text-gray-400">Here's your performance summary.</p>
+                <p className="text-gray-400">Here's your performance summary for this month.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <StatCard icon={<Users size={24} />} label="Total Leads" value={totalLeads} color="blue" />
-                <StatCard icon={<Briefcase size={24} />} label="New Clients" value={totalClients} color="green" />
-                <StatCard icon={<Target size={24} />} label="Activities Logged" value={totalActivities} color="purple" />
-                <StatCard icon={<TrendingUp size={24} />} label="Conversion Rate" value={`${conversionRate}%`} color="amber" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard icon={<Users size={24} />} label="New Leads" value={monthlyStats.newLeads} color="blue" />
+                <StatCard icon={<CheckCircle size={24} />} label="Clients Converted" value={monthlyStats.clientsConverted} color="green" />
+                <StatCard icon={<Shield size={24} />} label="Policies Sold" value={monthlyStats.policiesSold} color="purple" />
+                <StatCard icon={<DollarSign size={24} />} label="Total Premium" value={`$${monthlyStats.totalPremium.toLocaleString()}`} color="amber" />
             </div>
-
-            <div className="mt-8">
-                <h2 className="text-2xl font-bold text-white mb-4">Recent Activity</h2>
-                <Card>
-                    <div className="p-2">
-                        {recentActivities.length > 0 ? (
-                            recentActivities.map(activity => <RecentActivityItem key={activity.id} activity={activity} />)
-                        ) : (
-                            <div className="p-4 text-center text-gray-400">
-                                No recent activity to display.
-                            </div>
-                        )}
-                    </div>
-                </Card>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                    <LeadFunnelChart leads={leads} />
+                </div>
+                 <div>
+                    <h3 className="text-lg font-bold mb-4">Recent Activity</h3>
+                    <Card>
+                        <div className="p-2">
+                            {recentActivities.length > 0 ? (
+                                recentActivities.map(activity => <RecentActivityItem key={activity.id} activity={activity} />)
+                            ) : (
+                                <div className="p-4 text-center text-gray-400">
+                                    No recent activity.
+                                </div>
+                            )}
+                        </div>
+                    </Card>
+                </div>
             </div>
         </div>
     );
