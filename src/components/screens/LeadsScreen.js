@@ -1,13 +1,30 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getFirestore, collection, query, onSnapshot, where } from 'firebase/firestore';
 import { List, Trello, User, Phone, Mail, DollarSign } from 'lucide-react';
 import { LEAD_STAGES, LEAD_TEMPERATURES, LEAD_TEMPERATURE_COLORS } from '../../constants';
 import Card from '../ui/Card';
 import FilterSortPanel from '../ui/FilterSortPanel';
 
-const LeadsScreen = ({ leads = [], onSelectLead, allUsers = [], currentUser, onUpdateLead }) => {
+const LeadsScreen = ({ onSelectLead, allUsers = [], currentUser, onUpdateLead }) => {
+    const [leads, setLeads] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [view, setView] = useState('pipeline');
     const [filter, setFilter] = useState({ stage: 'all', temperature: 'all' });
     const [sort, setSort] = useState({ field: 'createdAt', direction: 'desc' });
+
+    useEffect(() => {
+        const db = getFirestore();
+        const leadsRef = collection(db, 'leads');
+        const q = query(leadsRef);
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const leadsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setLeads(leadsData);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, []);
 
     const managementRoles = ['super_admin', 'admin', 'branch_manager', 'unit_manager'];
     const isManagerView = currentUser && managementRoles.includes(currentUser.role);
@@ -73,6 +90,10 @@ const LeadsScreen = ({ leads = [], onSelectLead, allUsers = [], currentUser, onU
     ];
 
     const renderView = () => {
+        if (loading) {
+            return <p className="text-center p-8">Loading leads...</p>;
+        }
+
         if (view === 'pipeline') {
             return (
                 <PipelineView 

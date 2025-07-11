@@ -125,7 +125,7 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
 
     const handleSave = async () => {
         if (!userId) return;
-        const userDocRef = doc(db, `users`, userId);
+        const userDocRef = doc(db, 'users', userId);
         try {
             const dataToUpdate = { ...profileData, settings: settings };
             await updateDoc(userDocRef, dataToUpdate);
@@ -160,7 +160,7 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
             try { await getDownloadURL(storageRef); await deleteObject(storageRef); } catch (error) { /* Ignore */ }
             const snapshot = await uploadBytes(storageRef, file);
             const downloadURL = await getDownloadURL(snapshot.ref);
-            const userDocRef = doc(db, `users`, userId);
+            const userDocRef = doc(db, 'users', userId);
             await updateDoc(userDocRef, { photoURL: downloadURL });
             onUpdateUser({ ...user, photoURL: downloadURL });
             addToast('Profile picture updated!', 'success');

@@ -99,10 +99,10 @@ const PortfolioScreen = ({ clients = [], policies = [], onSelectClient, onSelect
 
             <div className="space-y-3">
                 {filteredAndSortedItems.length > 0 ? (
-                    filteredAndSortedItems.map(item =>
+                    filteredAndSortedItems.map((item, index) =>
                         item.itemType === 'Client' ? 
                         <ClientCard key={`client-${item.id}`} client={item} onClick={() => onSelectClient(item)} /> :
-                        <PolicyCard key={`policy-${item.id}`} policy={item} onClick={() => onSelectPolicy(item)} />
+                        <PolicyCard key={`policy-${item.id}-${item.policyNumber}`} policy={item} onClick={() => onSelectPolicy(item)} />
                     )
                 ) : (
                     <p className="text-center text-gray-500 pt-8">No items found.</p>

@@ -3,17 +3,20 @@ import { PowerIcon, UserCircleIcon, BellIcon, MagnifyingGlassIcon, ArrowLeftOnRe
 import LiveClock from './LiveClock';
 import Weather from './Weather';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getAuth, getIdTokenResult } from "firebase/auth";
 
 const TopHeader = ({ user, onProfileClick, onSearchClick, isClockedIn, onClockIn, onClockOut }) => {
-    const handleDebugClick = async () => {
+    const handleMigration = async () => {
         const functions = getFunctions();
-        const debugAdminDashboard = httpsCallable(functions, 'debugAdminDashboard');
+        const migrateUserData = httpsCallable(functions, 'migrateUserData');
         try {
-            console.log("Calling debugAdminDashboard function...");
-            const result = await debugAdminDashboard();
-            console.log('Debug result from admin dashboard check:', result.data);
+            alert("Starting data migration... This may take a moment.");
+            const result = await migrateUserData();
+            alert(result.data.message);
+            window.location.reload();
         } catch (error) {
-            console.error('Error calling debugAdminDashboard:', error);
+            console.error('Error migrating data:', error);
+            alert(`An error occurred during the migration: ${error.message}`);
         }
     };
 
@@ -50,10 +53,10 @@ const TopHeader = ({ user, onProfileClick, onSearchClick, isClockedIn, onClockIn
                     <UserCircleIcon className="h-8 w-8" />
                 </button>
                 <button
-                    onClick={handleDebugClick}
-                    className="p-2 bg-blue-500 text-white rounded"
+                    onClick={handleMigration}
+                    className="p-2 bg-yellow-500 text-black rounded"
                 >
-                    Debug
+                    Start Data Migration
                 </button>
             </div>
         </header>

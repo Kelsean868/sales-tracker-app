@@ -211,7 +211,7 @@ exports.universalSearch = onCall(async (request) => {
   const searchCollections = {
     leads: "name_lowercase",
     clients: "name_lowercase",
-    policies: "policyNumber", // Assuming policy numbers are stored in lowercase or are case-insensitive
+    policies: "policyNumber",
   };
 
   const searchPromises = Object.entries(searchCollections).map(async ([collectionName, fieldName]) => {
@@ -231,45 +231,85 @@ exports.universalSearch = onCall(async (request) => {
 });
 
 exports.getAdminDashboardData = onCall(async (request) => {
-    const { auth } = request;
-    if (!auth) {
-        throw new functions.https.HttpsError("unauthenticated", "Must be authenticated.");
+  const { auth } = request;
+  if (!auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Must be authenticated.");
+  }
+  
+  const claims = auth.token;
+  if (claims.role !== "super_admin" && claims.role !== "admin") {
+    throw new functions.https.HttpsError("permission-denied", "You must be an admin to call this function.");
+  }
+
+  const db = admin.firestore();
+  const collectionsToFetch = [
+    "leads", "clients", "activities",
+    "contacts", "users", "teams",
+    "units", "branches", "policies",
+  ];
+  
+  const data = {};
+  
+  for (const collectionName of collectionsToFetch) {
+    try {
+      const snapshot = await db.collection(collectionName).get();
+      const docs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      
+      if (collectionName === "users") {
+        data["allUsers"] = docs;
+      } else {
+        data[collectionName] = docs;
+      }
+    } catch (error) {
+      if (collectionName === "users") {
+        data["allUsers"] = [];
+      } else {
+        data[collectionName] = [];
+      }
     }
-    const claims = auth.token;
-    if (claims.role !== "super_admin" && claims.role !== "admin") {
-        throw new functions.https.HttpsError("permission-denied", "You must be an admin to call this function.");
+  }
+  
+  return data;
+});
+
+exports.migrateUserData = onCall(async (request) => {
+    if (!request.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
 
     const db = admin.firestore();
-    const collectionsToFetch = [
-        "leads", "clients", "activities",
-        "contacts", "users", "teams",
-        "units", "branches", "policies",
-    ];
-    
-    const data = {};
+    const usersSnapshot = await db.collection("users").get();
+    if (usersSnapshot.empty) {
+        return { message: "No users found. Nothing to migrate." };
+    }
 
-    for (const collectionName of collectionsToFetch) {
-        try {
-            const snapshot = await db.collection(collectionName).get();
-            const docs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-            
-            if (collectionName === "users") {
-                data["allUsers"] = docs;
-            } else {
-                data[collectionName] = docs;
+    const collectionsToMigrate = ["leads", "clients", "contacts", "policies"];
+    const migrationPromises = [];
+    let migratedCount = 0;
+
+    for (const userDoc of usersSnapshot.docs) {
+        for (const collectionName of collectionsToMigrate) {
+            const subcollectionRef = userDoc.ref.collection(collectionName);
+            const topLevelCollectionRef = db.collection(collectionName);
+            const subcollectionSnapshot = await subcollectionRef.get();
+
+            if (!subcollectionSnapshot.empty) {
+                subcollectionSnapshot.forEach(doc => {
+                    const promise = topLevelCollectionRef.doc(doc.id).set(doc.data());
+                    migrationPromises.push(promise);
+                    migratedCount++;
+                });
             }
-        } catch (error) {
-            console.error(`Error fetching collection '${collectionName}':`, error);
-            // If one collection fails, we can decide to either throw an error
-            // or return partial data. For now, let's throw.
-            throw new functions.https.HttpsError("internal", `Failed to fetch data for ${collectionName}.`, error.message);
         }
     }
 
-    return data;
-});
+    if (migrationPromises.length === 0) {
+        return { message: "No nested data found to migrate." };
+    }
 
+    await Promise.all(migrationPromises);
+    return { message: `Successfully migrated ${migratedCount} documents.` };
+});
 
 // Export leaderboard and notification functions
 exports.scheduledLeaderboardUpdate = leaderboard.scheduledLeaderboardUpdate;

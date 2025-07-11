@@ -97,14 +97,14 @@ const CalendarView = ({ activities, currentDate }) => {
         endOfDay.setHours(23, 59, 59, 999);
 
         const dailyActivities = activities.filter(act => {
-            const actDate = act.timestamp?.toDate();
+            const actDate = act.timestamp;
             if (!actDate) return false;
             return actDate >= startOfDay && actDate <= endOfDay;
         });
         
         const timed = dailyActivities
             .filter(act => act.isScheduled && act.scheduledTimestamp)
-            .sort((a, b) => a.scheduledTimestamp.toDate() - b.scheduledTimestamp.toDate());
+            .sort((a, b) => a.scheduledTimestamp - b.scheduledTimestamp);
 
         const allDay = dailyActivities.filter(act => !act.isScheduled || !act.scheduledTimestamp);
 
@@ -148,7 +148,7 @@ const Timeline = ({ timedEvents }) => {
 };
 
 const TimelineEvent = ({ event }) => {
-    const eventStart = event.scheduledTimestamp.toDate();
+    const eventStart = event.scheduledTimestamp;
     const startHour = eventStart.getHours() + eventStart.getMinutes() / 60;
     
     // Default duration to 30 minutes if not specified

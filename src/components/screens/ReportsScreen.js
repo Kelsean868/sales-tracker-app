@@ -51,8 +51,9 @@ const ReportsScreen = ({ activities = [], leads = [], policies = [], allUsers = 
 
         const filterByDate = (item) => {
             if (timeRange === 'all') return true;
-            const itemDate = item.timestamp?.toDate() || item.createdAt?.toDate();
-            return itemDate && itemDate.getTime() > timeLimit;
+            const itemDate = item.timestamp || item.createdAt;
+            if (!itemDate || typeof itemDate.getTime !== 'function') return false;
+            return itemDate.getTime() > timeLimit;
         };
 
         const filterByUser = (item) => {
@@ -83,7 +84,7 @@ const ReportsScreen = ({ activities = [], leads = [], policies = [], allUsers = 
                     PolicyID: p.id,
                     Premium: p.premium,
                     Type: p.type,
-                    Date: p.createdAt?.toDate().toLocaleDateString(),
+                    Date: p.createdAt.toLocaleDateString(),
                 }));
                 filename = 'sales_report.csv';
                 break;
@@ -92,7 +93,7 @@ const ReportsScreen = ({ activities = [], leads = [], policies = [], allUsers = 
                     ActivityID: a.id,
                     Type: a.type,
                     Points: a.points,
-                    Date: a.timestamp?.toDate().toLocaleDateString(),
+                    Date: a.timestamp.toLocaleDateString(),
                 }));
                  filename = 'activity_report.csv';
                 break;
@@ -179,7 +180,7 @@ const SalesReports = ({ data }) => {
     const premiumByDay = useMemo(() => {
         const res = {};
         data.policies.forEach(p => {
-            const day = p.createdAt.toDate().toLocaleDateString();
+            const day = p.createdAt.toLocaleDateString();
             if(!res[day]) res[day] = { name: day, premium: 0 };
             res[day].premium += p.premium;
         });
@@ -231,7 +232,7 @@ const ActivityReports = ({ data }) => {
      const pointsByDay = useMemo(() => {
         const res = {};
         data.activities.forEach(a => {
-            const day = a.timestamp.toDate().toLocaleDateString();
+            const day = a.timestamp.toLocaleDateString();
             if(!res[day]) res[day] = { name: day, points: 0 };
             res[day].points += (a.points || 0);
         });

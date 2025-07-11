@@ -8,7 +8,7 @@ import {
     signOut,
     getIdTokenResult
 } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, where, updateDoc, orderBy, limit } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, where, updateDoc, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -147,9 +147,20 @@ const AppContent = () => {
             const result = await getAdminData();
             const { data } = result;
             console.log("Data received in fetchAdminData:", JSON.stringify(data, null, 2));
+
+            // Transform timestamps
+            const transformTimestamp = (item, key) => {
+                if (item[key] && typeof item[key] === 'object' && item[key]._seconds) {
+                    return { ...item, [key]: new Timestamp(item[key]._seconds, item[key]._nanoseconds).toDate() };
+                }
+                return item;
+            };
+
+            const transformedActivities = (data.activities || []).map(activity => transformTimestamp(activity, 'timestamp'));
+
             setLeads(data.leads || []);
             setClients(data.clients || []);
-            setActivities(data.activities || []);
+            setActivities(transformedActivities);
             setContacts(data.contacts || []);
             setAllUsers(data.allUsers || []);
             setTeams(data.teams || []);
@@ -242,7 +253,14 @@ const AppContent = () => {
         Object.entries(dataCollections).forEach(([collectionName, setter]) => {
             const q = query(collection(db, collectionName), where(idField, '==', idValue));
             const unsubscribe = onSnapshot(q, (snapshot) => {
-                setter(snapshot.docs.map(d => ({id: d.id, ...d.data()})));
+                const transformedData = snapshot.docs.map(d => {
+                    const data = d.data();
+                    if (collectionName === 'activities' && data.timestamp) {
+                        return { id: d.id, ...data, timestamp: data.timestamp.toDate() };
+                    }
+                    return {id: d.id, ...data};
+                });
+                setter(transformedData);
             }, (error) => console.error(`Error fetching ${collectionName}:`, error));
             unsubscribes.push(unsubscribe);
         });

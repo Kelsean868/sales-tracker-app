@@ -115,7 +115,7 @@ const GoalTracker = ({ targetUserId, activities, isManagerViewing }) => {
         }
 
         const userActivities = activities.filter(a => a.userId === targetUserId);
-        const relevantActivities = userActivities.filter(a => a.timestamp?.toDate() >= startOfPeriod);
+        const relevantActivities = userActivities.filter(a => a.timestamp >= startOfPeriod);
 
         return {
             new_contacts: relevantActivities.filter(a => a.summaryKey === 'new_contact').length,
