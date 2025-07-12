@@ -13,52 +13,85 @@ service cloud.firestore {
     }
     
     function isSuperAdmin() {
-        return request.auth.token.role == 'super_admin';
+      return request.auth.token.role == 'super_admin';
+    }
+
+    function isAdmin() {
+      return request.auth.token.role == 'admin';
+    }
+
+    function isRegionalManager() {
+      return request.auth.token.role == 'regional_manager';
+    }
+
+    function isBranchManager() {
+      return request.auth.token.role == 'branch_manager';
+    }
+
+    function isUnitManager() {
+      return request.auth.token.role == 'unit_manager';
+    }
+
+    function canManageOrganization() {
+      return isSuperAdmin() || isAdmin() || isRegionalManager() || isBranchManager() || isUnitManager();
     }
 
     // --- Rules for all collections ---
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow update: if request.auth.uid == userId;
+      allow update: if request.auth.uid == userId || canManageOrganization();
+      allow create: if canManageOrganization();
     }
+
     match /activities/{activityId} {
       allow read, write: if isSignedIn();
     }
+
     match /leads/{leadId} {
       allow read, create: if isSignedIn();
       allow update, delete: if isSignedIn() && isOwner(resource.data);
     }
+
     match /clients/{clientId} {
       allow read, write: if isSignedIn();
     }
+
     match /contacts/{contactId} {
       allow read, write: if isSignedIn();
     }
+
     match /policies/{policyId} {
       allow read, write: if isSignedIn();
     }
+
     match /goals/{goalId} {
       allow read, write: if isSignedIn();
     }
+
     match /leaderboard/{entry} {
-        allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn();
     }
-     match /regions/{docId} { 
-        allow read: if isSignedIn();
-        allow write: if isSuperAdmin();
-     }
+
+    match /regions/{docId} { 
+      allow read: if isSignedIn();
+      allow write: if canManageOrganization();
+    }
+
     match /branches/{docId} {
-        allow read: if isSignedIn();
-        allow write: if isSuperAdmin();
+      allow read: if isSignedIn();
+      allow write: if canManageOrganization();
     }
+
     match /units/{docId} {
-        allow read: if isSignedIn();
-        allow write: if isSuperAdmin();
+      allow read: if isSignedIn();
+      allow write: if canManageOrganization();
     }
+
     match /teams/{docId} {
-        allow read: if isSignedIn();
-        allow write: if isSuperAdmin();
+      allow read: if isSignedIn();
+      allow write: if canManageOrganization();
     }
+
     match /workHistory/{docId} {
       allow read, create: if isSignedIn() && request.auth.uid == resource.data.userId;
     }

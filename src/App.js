@@ -136,43 +136,6 @@ const AppContent = () => {
 
     const { addToast } = useNotification();
     
-    const fetchAdminData = useCallback(async () => {
-        try {
-            // Ensure the user's token has the latest claims.
-            if (auth.currentUser) {
-                const idTokenResult = await getIdTokenResult(auth.currentUser, true);
-                console.log("Custom claims from fetchAdminData:", JSON.stringify(idTokenResult.claims, null, 2));
-            }
-            const getAdminData = httpsCallable(functions, 'getAdminDashboardData');
-            const result = await getAdminData();
-            const { data } = result;
-            console.log("Data received in fetchAdminData:", JSON.stringify(data, null, 2));
-
-            // Transform timestamps
-            const transformTimestamp = (item, key) => {
-                if (item[key] && typeof item[key] === 'object' && item[key]._seconds) {
-                    return { ...item, [key]: new Timestamp(item[key]._seconds, item[key]._nanoseconds).toDate() };
-                }
-                return item;
-            };
-
-            const transformedActivities = (data.activities || []).map(activity => transformTimestamp(activity, 'timestamp'));
-
-            setLeads(data.leads || []);
-            setClients(data.clients || []);
-            setActivities(transformedActivities);
-            setContacts(data.contacts || []);
-            setAllUsers(data.allUsers || []);
-            setTeams(data.teams || []);
-            setUnits(data.units || []);
-            setBranches(data.branches || []);
-            setPolicies(data.policies || []);
-        } catch (error) {
-            console.error("Error fetching admin data:", error);
-            addToast(`Could not load admin dashboard: ${error.message}`, "error");
-        }
-    }, [addToast, functions]);
-
     useEffect(() => {
         const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser && !firebaseUser.isAnonymous) {
@@ -205,68 +168,39 @@ const AppContent = () => {
     useEffect(() => {
         if (!user) return;
 
-        // Check user's last work status to be sure
-        const workHistoryRef = collection(db, 'workHistory');
-        const q = query(
-            workHistoryRef,
-            where('userId', '==', user.uid),
-            orderBy('timestamp', 'desc'),
-            limit(1)
-        );
-
-        const unsubscribeWorkHistory = onSnapshot(q, (snapshot) => {
-            if (!snapshot.empty) {
-                const lastEvent = snapshot.docs[0].data();
-                setClockedIn(lastEvent.type === 'clock_in');
-            } else {
-                setClockedIn(false);
+        const transformTimestamp = (item, key) => {
+            if (item[key] && typeof item[key] === 'object' && item[key].seconds) {
+                return { ...item, [key]: new Timestamp(item[key].seconds, item[key].nanoseconds).toDate() };
             }
-        });
-
-        const adminRoles = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN];
-        if (adminRoles.includes(user.role)) {
-            fetchAdminData();
-            return () => unsubscribeWorkHistory();
-        }
+            return item;
+        };
 
         const dataCollections = {
-            leads: setLeads,
-            clients: setClients,
-            contacts: setContacts,
-            activities: setActivities,
-            policies: setPolicies,
+            leads: (data) => setLeads(data.map(item => transformTimestamp(item, 'createdAt'))),
+            clients: (data) => setClients(data.map(item => transformTimestamp(item, 'createdAt'))),
+            contacts: (data) => setContacts(data.map(item => transformTimestamp(item, 'createdAt'))),
+            activities: (data) => setActivities(data.map(item => transformTimestamp(item, 'timestamp'))),
+            policies: (data) => setPolicies(data.map(item => transformTimestamp(item, 'createdAt'))),
         };
 
-        const hierarchyFieldMap = {
-            [USER_ROLES.SALES_PERSON]: 'userId',
-            [USER_ROLES.TEAM_LEAD]: 'teamId',
-            [USER_ROLES.UNIT_MANAGER]: 'unitId',
-            [USER_ROLES.BRANCH_MANAGER]: 'branchId',
-            [USER_ROLES.REGIONAL_MANAGER]: 'regionId',
+        const globalCollections = { 
+            users: setAllUsers, 
+            teams: setTeams, 
+            units: setUnits, 
+            branches: setBranches 
         };
 
-        const idField = hierarchyFieldMap[user.role];
-        const idValue = user[idField] || user.uid;
+        let unsubscribes = [];
 
-        let unsubscribes = [unsubscribeWorkHistory];
-        
         Object.entries(dataCollections).forEach(([collectionName, setter]) => {
-            const q = query(collection(db, collectionName), where(idField, '==', idValue));
+            const q = query(collection(db, collectionName));
             const unsubscribe = onSnapshot(q, (snapshot) => {
-                const transformedData = snapshot.docs.map(d => {
-                    const data = d.data();
-                    if (collectionName === 'activities' && data.timestamp) {
-                        return { id: d.id, ...data, timestamp: data.timestamp.toDate() };
-                    }
-                    return {id: d.id, ...data};
-                });
-                setter(transformedData);
+                const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+                setter(data);
             }, (error) => console.error(`Error fetching ${collectionName}:`, error));
             unsubscribes.push(unsubscribe);
         });
-
-        // Listen to global collections
-        const globalCollections = { users: setAllUsers, teams: setTeams, units: setUnits, branches: setBranches };
+        
         Object.entries(globalCollections).forEach(([collectionName, setter]) => {
             const q = query(collection(db, collectionName));
             const unsubscribe = onSnapshot(q, (snapshot) => setter(snapshot.docs.map(d => ({id: d.id, ...d.data()}))));
@@ -274,7 +208,7 @@ const AppContent = () => {
         });
         
         return () => unsubscribes.forEach(unsub => unsub());
-    }, [user, fetchAdminData]);
+    }, [user]);
 
     const getOrgIds = (targetUser) => ({
         userId: targetUser.uid,

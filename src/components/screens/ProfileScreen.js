@@ -19,13 +19,20 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
     const [teams, setTeams] = useState([]);
     const [units, setUnits] = useState([]);
     const [branches, setBranches] = useState([]);
+    const [regions, setRegions] = useState([]);
     const [newOrgUnit, setNewOrgUnit] = useState({ name: '', type: '' });
 
     const auth = getAuth();
     const functions = getFunctions();
 
-    const managementRoles = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.UNIT_MANAGER];
-    const canManage = user && managementRoles.includes(user.role);
+    const managementRoles = [
+        USER_ROLES.SUPER_ADMIN, 
+        USER_ROLES.ADMIN, 
+        USER_ROLES.REGIONAL_MANAGER,
+        USER_ROLES.BRANCH_MANAGER,
+        USER_ROLES.UNIT_MANAGER
+      ];
+      const canManage = user && managementRoles.includes(user.role);
 
     const initialProfileState = useMemo(() => ({
         name: user?.name || '',
@@ -53,22 +60,17 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
         }
 
         const collectionsToListen = {
-            users: collection(db, 'users'),
-            teams: collection(db, 'teams'),
-            units: collection(db, 'units'),
-            branches: collection(db, 'branches'),
+            users: setAllUsers,
+            teams: setTeams,
+            units: setUnits,
+            branches: setBranches,
+            regions: setRegions,
         };
 
-        const unsubscribes = Object.entries(collectionsToListen).map(([key, collectionRef]) => {
-            return onSnapshot(query(collectionRef), (snapshot) => {
+        const unsubscribes = Object.entries(collectionsToListen).map(([key, setter]) => {
+            return onSnapshot(query(collection(db, key)), (snapshot) => {
                 const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                switch (key) {
-                    case 'users': setAllUsers(data); break;
-                    case 'teams': setTeams(data); break;
-                    case 'units': setUnits(data); break;
-                    case 'branches': setBranches(data); break;
-                    default: break;
-                }
+                setter(data);
             }, (error) => {
                 console.error(`Error fetching real-time ${key}:`, error);
             });
@@ -178,16 +180,18 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
             addToast('Please provide a name and select a type.', 'error');
             return;
         }
+
         try {
-            await addDoc(collection(db, `${newOrgUnit.type}s`), { 
+            const createOrgUnit = httpsCallable(functions, 'createOrgUnit');
+            await createOrgUnit({
                 name: newOrgUnit.name,
-                createdAt: serverTimestamp(),
+                type: newOrgUnit.type,
             });
             addToast(`${newOrgUnit.type.charAt(0).toUpperCase() + newOrgUnit.type.slice(1)} created!`, 'success');
             setNewOrgUnit({ name: '', type: '' });
         } catch (error) {
             console.error("Error creating organizational unit:", error);
-            addToast('Failed to create unit.', 'error');
+            addToast(`Failed to create ${newOrgUnit.type}: ${error.message}`, 'error');
         }
     };
 
@@ -309,70 +313,113 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
     );
     
     const renderManagementTab = () => (
-        <div className="space-y-8">
-            <div>
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold">User Management</h2>
-                    <button onClick={onOpenAddUserModal} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md flex items-center">
-                        <PlusCircle className="w-5 h-5 mr-2"/> Add User
-                    </button>
-                </div>
-                <div className="bg-gray-900/50 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
-                    <table className="w-full text-left">
-                        <thead className="bg-gray-700 sticky top-0">
-                            <tr>
-                                <th className="p-3">Name</th>
-                                <th className="p-3">Email</th>
-                                <th className="p-3">Role</th>
-                                <th className="p-3">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {allUsers.map(u => (
-                                <tr key={u.id} className="border-b border-gray-700">
-                                    <td className="p-3 flex items-center gap-3">
-                                        <img src={u.photoURL || `https://placehold.co/40x40/374151/ECF0F1?text=${u.name ? u.name.charAt(0) : 'A'}`} alt={u.name} className="w-8 h-8 rounded-full" />
-                                        {u.name}
-                                    </td>
-                                    <td className="p-3 text-gray-400">{u.email}</td>
-                                    <td className="p-3 text-gray-400 capitalize">{(u.role || 'sales_person').replace(/_/g, ' ').toLowerCase()}</td>
-                                    <td className="p-3">
-                                        <button onClick={() => onOpenEditUserModal(u)} className="text-blue-400 hover:underline">Edit</button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold mb-4 flex items-center">
+              <Users className="mr-2" /> User Management
+            </h3>
+            <button
+              onClick={onOpenAddUserModal}
+              className="mb-4 bg-blue-600 text-white px-4 py-2 rounded-md flex items-center"
+            >
+              <PlusCircle className="mr-2 w-4 h-4" />
+              Add User
+            </button>
+            
+            <div className="bg-gray-800 rounded-lg overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-700">
+                  <tr>
+                    <th className="text-left p-3">Name</th>
+                    <th className="text-left p-3">Email</th>
+                    <th className="text-left p-3">Role</th>
+                    <th className="text-left p-3">Organization</th>
+                    <th className="text-left p-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {allUsers.map(u => (
+                    <tr key={u.id} className="hover:bg-gray-700">
+                      <td className="p-3">{u.name}</td>
+                      <td className="p-3">{u.email}</td>
+                      <td className="p-3">{(u.role || 'sales_person').replace(/_/g, ' ').toLowerCase()}</td>
+                      <td className="p-3">
+                        <div className="text-sm">
+                          {u.regionId && `Region: ${u.regionId}`}
+                          {u.branchId && `Branch: ${u.branchId}`}
+                          {u.unitId && `Unit: ${u.unitId}`}
+                          {u.teamId && `Team: ${u.teamId}`}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <button
+                          onClick={() => onOpenEditUserModal(u)}
+                          className="text-blue-400 hover:text-blue-300 mr-2"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-
-            <div>
-                <h2 className="text-xl font-bold mb-4">Organizational Units</h2>
-                <form onSubmit={handleCreateOrgUnit} className="flex items-end gap-4 mb-6 p-4 bg-gray-900/50 rounded-lg">
-                    <div className="flex-grow">
-                        <label htmlFor="unitName" className="block text-sm font-medium text-gray-400">New Unit Name</label>
-                        <input id="unitName" type="text" value={newOrgUnit.name} onChange={(e) => setNewOrgUnit(prev => ({...prev, name: e.target.value}))} placeholder="e.g., North Star Unit" className="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md p-2" />
-                    </div>
-                    <div>
-                        <label htmlFor="unitType" className="block text-sm font-medium text-gray-400">Type</label>
-                        <select id="unitType" value={newOrgUnit.type} onChange={(e) => setNewOrgUnit(prev => ({...prev, type: e.target.value}))} className="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md p-2 h-[42px]">
-                            <option value="">Select Type</option>
-                            <option value="branch">Branch</option>
-                            <option value="unit">Unit</option>
-                            <option value="team">Team</option>
-                        </select>
-                    </div>
-                    <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md h-[42px]">Create</button>
-                </form>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <OrgUnitList title="Branches" items={branches} icon={<Building className="w-5 h-5 mr-2"/>} />
-                    <OrgUnitList title="Units" items={units} icon={<Briefcase className="w-5 h-5 mr-2"/>} />
-                    <OrgUnitList title="Teams" items={teams} icon={<Users className="w-5 h-5 mr-2"/>} />
+          </div>
+      
+          <div>
+            <h3 className="text-lg font-semibold mb-4 flex items-center">
+              <Building className="mr-2" /> Organizational Units
+            </h3>
+            
+            <form onSubmit={handleCreateOrgUnit} className="mb-6 bg-gray-800 p-4 rounded-lg">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">New Unit Name</label>
+                  <input
+                    type="text"
+                    value={newOrgUnit.name}
+                    onChange={(e) => setNewOrgUnit(prev => ({...prev, name: e.target.value}))}
+                    placeholder="e.g., North Star Unit"
+                    className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2"
+                  />
                 </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Type</label>
+                  <select
+                    value={newOrgUnit.type}
+                    onChange={(e) => setNewOrgUnit(prev => ({...prev, type: e.target.value}))}
+                    className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2"
+                  >
+                    <option value="">Select Type</option>
+                    <option value="region">Region</option>
+                    <option value="branch">Branch</option>
+                    <option value="unit">Unit</option>
+                    <option value="team">Team</option>
+                  </select>
+                </div>
+                
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    className="bg-green-600 text-white px-4 py-2 rounded-md flex items-center"
+                  >
+                    <PlusCircle className="mr-2 w-4 h-4" />
+                    Create
+                  </button>
+                </div>
+              </div>
+            </form>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <OrgUnitList title="Regions" items={regions} icon={<Building className="w-4 h-4" />} />
+              <OrgUnitList title="Branches" items={branches} icon={<Building className="w-4 h-4" />} />
+              <OrgUnitList title="Units" items={units} icon={<Briefcase className="w-4 h-4" />} />
+              <OrgUnitList title="Teams" items={teams} icon={<Users className="w-4 h-4" />} />
             </div>
+          </div>
         </div>
-    );
+      );
 
     const OrgUnitList = ({ title, items, icon }) => (
         <div className="bg-gray-900/50 p-4 rounded-lg">
