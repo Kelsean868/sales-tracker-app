@@ -168,10 +168,10 @@ const Dashboard = ({ currentUser, allUsers = [] }) => {
         const isThisMonth = (date) => date ? toDate(date) >= startOfMonth : false;
 
         const calcStats = (userList) => {
-            const userIds = userList.map(u => u.id);
-            const relevantPolicies = policies.filter(p => userIds.includes(p.userId) && isThisMonth(p.createdAt));
+            const userIds = userList.map(u => u.id || u.uid);
+            const relevantPolicies = policies.filter(p => userIds.includes(p.userId || p.agentId) && isThisMonth(p.createdAt));
             const relevantClients = clients.filter(c => userIds.includes(c.userId) && isThisMonth(c.createdAt));
-            const relevantLeads = leads.filter(l => userIds.includes(l.userId));
+            const relevantLeads = leads.filter(l => userIds.includes(l.userId) && isThisMonth(l.createdAt));
             
             return {
                 policiesSold: relevantPolicies.length,
