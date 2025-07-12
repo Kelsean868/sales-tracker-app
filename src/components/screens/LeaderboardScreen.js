@@ -3,7 +3,7 @@ import { collection, query, orderBy, onSnapshot, getFirestore } from 'firebase/f
 import { Trophy, ChevronDown, ChevronUp } from 'lucide-react';
 import Card from '../ui/Card';
 
-const LeaderboardScreen = ({ currentUser }) => {
+const LeaderboardScreen = ({ currentUser, allUsers = [] }) => {
     const [period, setPeriod] = useState('weekly');
     const [leaderboardData, setLeaderboardData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -27,7 +27,7 @@ const LeaderboardScreen = ({ currentUser }) => {
 
     const userHierarchy = useMemo(() => {
         const hierarchy = {};
-        leaderboardData.forEach(user => {
+        allUsers.forEach(user => {
             if (user.managerId) {
                 if (!hierarchy[user.managerId]) {
                     hierarchy[user.managerId] = [];
@@ -36,61 +36,65 @@ const LeaderboardScreen = ({ currentUser }) => {
             }
         });
         return hierarchy;
-    }, [leaderboardData]);
+    }, [allUsers]);
 
     const toggleRow = (id) => {
         setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
-    const renderUserRow = (user, index, isSubordinate = false) => (
-        <React.Fragment key={user.id}>
-            <tr 
-                className={`hover:bg-gray-700/80 ${isSubordinate ? 'bg-gray-800' : 'bg-gray-700/50'}`} 
-                onClick={() => userHierarchy[user.id] && toggleRow(user.id)}
-            >
-                <td className="p-3 text-center">{index + 1}</td>
-                <td className="p-3 flex items-center">
-                    <img
-                        src={user.photoURL || `https://placehold.co/40x40/374151/ECF0F1?text=${user.name ? user.name.charAt(0) : 'A'}`}
-                        alt={user.name}
-                        className="w-10 h-10 rounded-full object-cover"
-                    />
-                    <div className="ml-4">
-                        <p className="font-semibold">{user.name}</p>
-                        <p className="text-xs text-gray-400 capitalize">{(user.role || '').replace(/_/g, ' ')}</p>
-                    </div>
-                </td>
-                <td className="p-3 text-center">
-                    <div className="flex items-center justify-center">
-                        <Trophy className="text-yellow-500 mr-2" size={18} />
-                        <span className="font-bold text-lg">{(user[period] || 0).toLocaleString()}</span>
-                    </div>
-                </td>
-                <td className="p-3 text-center">
-                    {userHierarchy[user.id] ? (
-                        expandedRows[user.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />
-                    ) : null}
-                </td>
-            </tr>
-            {expandedRows[user.id] && userHierarchy[user.id] && (
-                <tr>
-                    <td colSpan="4" className="p-0">
-                        <div className="p-4 pl-12 bg-gray-800">
-                            <table className="w-full">
-                                <tbody>
-                                    {userHierarchy[user.id].map((subordinate, subIndex) => renderUserRow(subordinate, subIndex, true))}
-                                </tbody>
-                            </table>
+    const renderUserRow = (user, index, isSubordinate = false) => {
+        const userData = leaderboardData.find(d => d.id === user.id) || { name: user.name, role: user.role };
+        
+        return (
+            <React.Fragment key={user.id}>
+                <tr 
+                    className={`hover:bg-gray-700/80 ${isSubordinate ? 'bg-gray-800' : 'bg-gray-700/50'}`} 
+                    onClick={() => userHierarchy[user.id] && toggleRow(user.id)}
+                >
+                    <td className="p-3 text-center">{index + 1}</td>
+                    <td className="p-3 flex items-center">
+                        <img
+                            src={userData.photoURL || `https://placehold.co/40x40/374151/ECF0F1?text=${userData.name ? userData.name.charAt(0) : 'A'}`}
+                            alt={userData.name}
+                            className="w-10 h-10 rounded-full object-cover"
+                        />
+                        <div className="ml-4">
+                            <p className="font-semibold">{userData.name}</p>
+                            <p className="text-xs text-gray-400 capitalize">{(userData.role || '').replace(/_/g, ' ')}</p>
                         </div>
                     </td>
+                    <td className="p-3 text-center">
+                        <div className="flex items-center justify-center">
+                            <Trophy className="text-yellow-500 mr-2" size={18} />
+                            <span className="font-bold text-lg">{(userData[period] || 0).toLocaleString()}</span>
+                        </div>
+                    </td>
+                    <td className="p-3 text-center">
+                        {userHierarchy[user.id] ? (
+                            expandedRows[user.id] ? <ChevronUp size={20} /> : <ChevronDown size={20} />
+                        ) : null}
+                    </td>
                 </tr>
-            )}
-        </React.Fragment>
-    );
+                {expandedRows[user.id] && userHierarchy[user.id] && (
+                    <tr>
+                        <td colSpan="4" className="p-0">
+                            <div className="p-4 pl-12 bg-gray-800">
+                                <table className="w-full">
+                                    <tbody>
+                                        {userHierarchy[user.id].map((subordinate, subIndex) => renderUserRow(subordinate, subIndex, true))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                )}
+            </React.Fragment>
+        );
+    }
 
-    const filteredData = useMemo(() => {
+    const filteredUsers = useMemo(() => {
         if (view === 'company') {
-            return leaderboardData.filter(u => !u.managerId); // Start with top-level users
+            return allUsers.filter(u => !u.managerId); // Start with top-level users (e.g., branch managers)
         }
         
         const getSubordinates = (managerId) => {
@@ -108,13 +112,13 @@ const LeaderboardScreen = ({ currentUser }) => {
         if (view === 'unit' && currentUser.role === 'unit_manager') {
             return getSubordinates(currentUser.uid);
         }
-        if (view === 'team') { // for team leads or managers looking at their direct reports
+        if (view === 'team') { 
              return userHierarchy[currentUser.uid] || [];
         }
         
-        return leaderboardData.filter(u => u.managerId === currentUser.uid);
+        return allUsers.filter(u => u.managerId === currentUser.uid);
 
-    }, [view, leaderboardData, currentUser, userHierarchy]);
+    }, [view, allUsers, currentUser, userHierarchy]);
 
     return (
         <div className="space-y-4">
@@ -149,12 +153,12 @@ const LeaderboardScreen = ({ currentUser }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredData.length > 0 ? (
-                                filteredData.map((user, index) => renderUserRow(user, index))
+                            {filteredUsers.length > 0 ? (
+                                filteredUsers.map((user, index) => renderUserRow(user, index))
                             ) : (
                                 <tr>
                                     <td colSpan="4" className="text-center text-gray-500 py-8">
-                                        No activity data for this period or view.
+                                        No users to display for this view.
                                     </td>
                                 </tr>
                             )}

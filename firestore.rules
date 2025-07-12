@@ -11,6 +11,10 @@ service cloud.firestore {
     function isOwner(resourceData) {
       return request.auth.uid == resourceData.userId;
     }
+    
+    function isSuperAdmin() {
+        return request.auth.token.role == 'super_admin';
+    }
 
     // --- Rules for all collections ---
     match /users/{userId} {
@@ -39,10 +43,22 @@ service cloud.firestore {
     match /leaderboard/{entry} {
         allow read, write: if isSignedIn();
     }
-     match /regions/{docId} { allow read: if isSignedIn(); allow write: if false; }
-    match /branches/{docId} { allow read: if isSignedIn(); allow write: if false; }
-    match /units/{docId} { allow read: if isSignedIn(); allow write: if false; }
-    match /teams/{docId} { allow read: if isSignedIn(); allow write: if false; }
+     match /regions/{docId} { 
+        allow read: if isSignedIn();
+        allow write: if isSuperAdmin();
+     }
+    match /branches/{docId} {
+        allow read: if isSignedIn();
+        allow write: if isSuperAdmin();
+    }
+    match /units/{docId} {
+        allow read: if isSignedIn();
+        allow write: if isSuperAdmin();
+    }
+    match /teams/{docId} {
+        allow read: if isSignedIn();
+        allow write: if isSuperAdmin();
+    }
     match /workHistory/{docId} {
       allow read, create: if isSignedIn() && request.auth.uid == resource.data.userId;
     }

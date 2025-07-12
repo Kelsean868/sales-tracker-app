@@ -35,12 +35,15 @@ const ReportsScreen = ({ activities = [], leads = [], policies = [], allUsers = 
     const [selectedTeamMember, setSelectedTeamMember] = useState('all');
 
     const isManager = useMemo(() => 
-        ['TEAM_LEAD', 'UNIT_MANAGER', 'BRANCH_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(currentUser.role),
+        ['super_admin', 'admin', 'regional_manager', 'branch_manager', 'unit_manager', 'team_lead'].includes(currentUser.role),
         [currentUser.role]
     );
 
     const teamMembers = useMemo(() => {
         if (!isManager) return [];
+        if (currentUser.role === 'super_admin' || currentUser.role === 'admin') {
+            return allUsers;
+        }
         // Add logic to filter users based on manager's hierarchy
         return allUsers.filter(u => u.teamId === currentUser.teamId);
     }, [isManager, allUsers, currentUser]);
@@ -54,11 +57,6 @@ const ReportsScreen = ({ activities = [], leads = [], policies = [], allUsers = 
             const itemDate = item.timestamp || item.createdAt;
             if (!itemDate || typeof itemDate.getTime !== 'function') return false;
             return itemDate.getTime() > timeLimit;
-        };
-
-        const filterByUser = (item) => {
-            if (!isManager || selectedTeamMember === 'all') return item.userId === currentUser.uid;
-            return item.userId === selectedTeamMember;
         };
         
         const managerFilter = (item) => {
