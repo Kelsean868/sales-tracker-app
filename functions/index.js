@@ -272,45 +272,6 @@ exports.getAdminDashboardData = onCall(async (request) => {
   return data;
 });
 
-exports.migrateUserData = onCall(async (request) => {
-    if (!request.auth) {
-        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
-    }
-
-    const db = admin.firestore();
-    const usersSnapshot = await db.collection("users").get();
-    if (usersSnapshot.empty) {
-        return { message: "No users found. Nothing to migrate." };
-    }
-
-    const collectionsToMigrate = ["leads", "clients", "contacts", "policies"];
-    const migrationPromises = [];
-    let migratedCount = 0;
-
-    for (const userDoc of usersSnapshot.docs) {
-        for (const collectionName of collectionsToMigrate) {
-            const subcollectionRef = userDoc.ref.collection(collectionName);
-            const topLevelCollectionRef = db.collection(collectionName);
-            const subcollectionSnapshot = await subcollectionRef.get();
-
-            if (!subcollectionSnapshot.empty) {
-                subcollectionSnapshot.forEach(doc => {
-                    const promise = topLevelCollectionRef.doc(doc.id).set(doc.data());
-                    migrationPromises.push(promise);
-                    migratedCount++;
-                });
-            }
-        }
-    }
-
-    if (migrationPromises.length === 0) {
-        return { message: "No nested data found to migrate." };
-    }
-
-    await Promise.all(migrationPromises);
-    return { message: `Successfully migrated ${migratedCount} documents.` };
-});
-
 // Export leaderboard and notification functions
 exports.scheduledLeaderboardUpdate = leaderboard.scheduledLeaderboardUpdate;
 exports.activityNotifications = notifications.activityNotifications;

@@ -3,13 +3,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- Helper Function ---
+    // --- Helper Functions ---
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
+    function isOwner(resourceData) {
+      return request.auth.uid == resourceData.userId;
+    }
+
     // --- Rules for all collections ---
-    // This allows any user that is signed in to read the data.
     match /users/{userId} {
       allow read: if isSignedIn();
       allow update: if request.auth.uid == userId;
@@ -18,8 +21,8 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
     match /leads/{leadId} {
-      allow read: if isSignedIn();
-      allow create, update, delete: if isSignedIn() && isOwner(resource.data);
+      allow read, create: if isSignedIn();
+      allow update, delete: if isSignedIn() && isOwner(resource.data);
     }
     match /clients/{clientId} {
       allow read, write: if isSignedIn();

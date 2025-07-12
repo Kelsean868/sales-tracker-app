@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getFirestore, collection, query, onSnapshot, Timestamp } from 'firebase/firestore';
 import { Users, Shield, DollarSign, CheckCircle, Activity, Clock, Phone, Mail, UserPlus, Briefcase, TrendingUp, Target } from 'lucide-react';
 import Card from '../ui/Card';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -29,7 +30,8 @@ const RecentActivityItem = ({ activity }) => {
     };
 
     const toDate = (timestamp) => {
-        if (timestamp?.toDate) return timestamp.toDate();
+        if (!timestamp) return new Date();
+        if (timestamp.toDate) return timestamp.toDate();
         return new Date(timestamp);
     };
 
@@ -91,7 +93,43 @@ const SalesFunnelChart = ({ leads = [] }) => {
 };
 
 
-const Dashboard = ({ activities = [], leads = [], policies = [], clients = [], currentUser, allUsers = [] }) => {
+const Dashboard = ({ currentUser, allUsers = [] }) => {
+    const [activities, setActivities] = useState([]);
+    const [leads, setLeads] = useState([]);
+    const [policies, setPolicies] = useState([]);
+    const [clients, setClients] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const db = getFirestore();
+        
+        const transformTimestamp = (item, key) => {
+            const timestamp = item[key];
+            if (timestamp && typeof timestamp === 'object' && timestamp.seconds) {
+                return { ...item, [key]: new Timestamp(timestamp.seconds, timestamp.nanoseconds).toDate() };
+            }
+            return item;
+        };
+        
+        const collectionsToFetch = {
+            activities: (data) => setActivities(data.map(item => transformTimestamp(item, 'timestamp'))),
+            leads: (data) => setLeads(data.map(item => transformTimestamp(item, 'createdAt'))),
+            policies: (data) => setPolicies(data.map(item => transformTimestamp(item, 'createdAt'))),
+            clients: (data) => setClients(data.map(item => transformTimestamp(item, 'createdAt'))),
+        };
+
+        const unsubscribes = Object.entries(collectionsToFetch).map(([collectionName, transformer]) => {
+            const q = query(collection(db, collectionName));
+            return onSnapshot(q, (snapshot) => {
+                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                transformer(data);
+            });
+        });
+
+        setLoading(false);
+        return () => unsubscribes.forEach(unsub => unsub());
+    }, []);
+
     const getGreeting = () => {
         const hour = new Date().getHours();
         if (hour < 12) return 'Good Morning';
@@ -111,7 +149,6 @@ const Dashboard = ({ activities = [], leads = [], policies = [], clients = [], c
         const my = activities.filter(a => a.userId === currentUser.uid);
         if (!isManager) return { myActivities: my, teamActivities: [] };
         
-        // This is a simplified hierarchy check. A real app might need a more robust recursive check.
         const myTeamUserIds = allUsers.filter(u => u.managerId === currentUser.uid).map(u => u.id);
         const team = activities.filter(a => myTeamUserIds.includes(a.userId));
         
@@ -134,7 +171,7 @@ const Dashboard = ({ activities = [], leads = [], policies = [], clients = [], c
             const userIds = userList.map(u => u.id);
             const relevantPolicies = policies.filter(p => userIds.includes(p.userId) && isThisMonth(p.createdAt));
             const relevantClients = clients.filter(c => userIds.includes(c.userId) && isThisMonth(c.createdAt));
-            const relevantLeads = leads.filter(l => userIds.includes(l.userId) && isThisMonth(l.createdAt));
+            const relevantLeads = leads.filter(l => userIds.includes(l.userId));
             
             return {
                 policiesSold: relevantPolicies.length,
@@ -150,6 +187,10 @@ const Dashboard = ({ activities = [], leads = [], policies = [], clients = [], c
         const teamStats = calcStats(allUsers.filter(u => u.managerId === currentUser.uid));
         return { my: myStats, team: teamStats };
     }, [leads, clients, policies, currentUser, allUsers, isManager]);
+    
+    if (loading) {
+        return <p className="text-center p-8">Loading dashboard...</p>;
+    }
     
     return (
         <div className="space-y-6">

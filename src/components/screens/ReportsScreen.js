@@ -84,7 +84,7 @@ const ReportsScreen = ({ activities = [], leads = [], policies = [], allUsers = 
                     PolicyID: p.id,
                     Premium: p.premium,
                     Type: p.type,
-                    Date: p.createdAt.toLocaleDateString(),
+                    Date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : 'N/A',
                 }));
                 filename = 'sales_report.csv';
                 break;
@@ -93,7 +93,7 @@ const ReportsScreen = ({ activities = [], leads = [], policies = [], allUsers = 
                     ActivityID: a.id,
                     Type: a.type,
                     Points: a.points,
-                    Date: a.timestamp.toLocaleDateString(),
+                    Date: a.timestamp ? new Date(a.timestamp).toLocaleDateString() : 'N/A',
                 }));
                  filename = 'activity_report.csv';
                 break;
@@ -180,7 +180,7 @@ const SalesReports = ({ data }) => {
     const premiumByDay = useMemo(() => {
         const res = {};
         data.policies.forEach(p => {
-            const day = p.createdAt.toLocaleDateString();
+            const day = new Date(p.createdAt).toLocaleDateString();
             if(!res[day]) res[day] = { name: day, premium: 0 };
             res[day].premium += p.premium;
         });
@@ -232,7 +232,7 @@ const ActivityReports = ({ data }) => {
      const pointsByDay = useMemo(() => {
         const res = {};
         data.activities.forEach(a => {
-            const day = a.timestamp.toLocaleDateString();
+            const day = new Date(a.timestamp).toLocaleDateString();
             if(!res[day]) res[day] = { name: day, points: 0 };
             res[day].points += (a.points || 0);
         });

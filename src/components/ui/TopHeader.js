@@ -1,25 +1,9 @@
 import React from 'react';
-import { PowerIcon, UserCircleIcon, BellIcon, MagnifyingGlassIcon, ArrowLeftOnRectangleIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, BellIcon, MagnifyingGlassIcon, ArrowLeftOnRectangleIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
 import LiveClock from './LiveClock';
 import Weather from './Weather';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { getAuth, getIdTokenResult } from "firebase/auth";
 
 const TopHeader = ({ user, onProfileClick, onSearchClick, isClockedIn, onClockIn, onClockOut }) => {
-    const handleMigration = async () => {
-        const functions = getFunctions();
-        const migrateUserData = httpsCallable(functions, 'migrateUserData');
-        try {
-            alert("Starting data migration... This may take a moment.");
-            const result = await migrateUserData();
-            alert(result.data.message);
-            window.location.reload();
-        } catch (error) {
-            console.error('Error migrating data:', error);
-            alert(`An error occurred during the migration: ${error.message}`);
-        }
-    };
-
     return (
         <header className="bg-gray-800 shadow-md p-4 flex justify-between items-center text-white">
             <div className="flex items-center">
@@ -51,12 +35,6 @@ const TopHeader = ({ user, onProfileClick, onSearchClick, isClockedIn, onClockIn
                 </button>
                 <button onClick={onProfileClick} className="p-2 rounded-full hover:bg-gray-700">
                     <UserCircleIcon className="h-8 w-8" />
-                </button>
-                <button
-                    onClick={handleMigration}
-                    className="p-2 bg-yellow-500 text-black rounded"
-                >
-                    Start Data Migration
                 </button>
             </div>
         </header>
