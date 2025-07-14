@@ -13,11 +13,14 @@ const PolicyModal = ({ isOpen, onClose, onAddPolicy, policy, client, clientId, c
         inforcedDate: '',
         maturityDate: '',
         status: 'active',
+        beneficiary: 'Estate',
+        ageAtIssue: null,
+    });
+
+    const [roles, setRoles] = useState({
         owner: null,
         insured: null,
         payor: null,
-        beneficiary: 'Estate',
-        ageAtIssue: null,
     });
 
     useEffect(() => {
@@ -40,30 +43,34 @@ const PolicyModal = ({ isOpen, onClose, onAddPolicy, policy, client, clientId, c
                     inforcedDate: formatDateForInput(policy.inforcedDate),
                     maturityDate: formatDateForInput(policy.maturityDate),
                     status: policy.status || 'active',
+                    beneficiary: policy.beneficiary || 'Estate',
+                    ageAtIssue: policy.ageAtIssue || null,
+                });
+                setRoles({
                     owner: policy.owner || personInfo,
                     insured: policy.insured || personInfo,
                     payor: policy.payor || personInfo,
-                    beneficiary: policy.beneficiary || 'Estate',
-                    ageAtIssue: policy.ageAtIssue || null,
                 });
             } else {
                 setPolicyData({ 
                     policyNumber: '', type: '', premium: '', 
                     premiumFrequency: 'monthly', inforcedDate: '', 
                     maturityDate: '', status: 'active',
+                    beneficiary: 'Estate',
+                    ageAtIssue: null,
+                });
+                setRoles({
                     owner: personInfo,
                     insured: personInfo,
                     payor: personInfo,
-                    beneficiary: 'Estate',
-                    ageAtIssue: null,
                 });
             }
         }
     }, [isOpen, policy, isEditMode, client]);
 
     useEffect(() => {
-        if (policyData.insured?.dob) {
-            const birthDate = new Date(policyData.insured.dob);
+        if (roles.insured?.dob) {
+            const birthDate = new Date(roles.insured.dob);
             const today = new Date();
             let age = today.getFullYear() - birthDate.getFullYear();
             const m = today.getMonth() - birthDate.getMonth();
@@ -76,7 +83,7 @@ const PolicyModal = ({ isOpen, onClose, onAddPolicy, policy, client, clientId, c
         } else {
             setPolicyData(prev => ({...prev, ageAtIssue: null}));
         }
-    }, [policyData.insured, ageCalculationType]);
+    }, [roles.insured, ageCalculationType]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -84,13 +91,14 @@ const PolicyModal = ({ isOpen, onClose, onAddPolicy, policy, client, clientId, c
     };
 
     const handleRoleSelect = (role, person) => {
-        setPolicyData(prev => ({ ...prev, [role]: person }));
+        setRoles(prev => ({ ...prev, [role]: person }));
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
         const finalPolicyData = {
             ...policyData,
+            ...roles,
             clientId: clientId,
             clientName: client.name,
             inforcedDate: policyData.inforcedDate ? new Date(policyData.inforcedDate).toISOString() : null,
@@ -142,10 +150,10 @@ const PolicyModal = ({ isOpen, onClose, onAddPolicy, policy, client, clientId, c
                         <div className="pt-4 border-t border-gray-700">
                             <h3 className="text-lg font-semibold text-gray-300 mb-3">Policy Roles</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                               <RoleSelector label="Owner" value={policyData.owner} onSelect={(p) => handleRoleSelect('owner', p)} contacts={contacts} onAddNew={onAddNewPerson} />
-                               <RoleSelector label="Insured" value={policyData.insured} onSelect={(p) => handleRoleSelect('insured', p)} contacts={contacts} onAddNew={onAddNewPerson} />
-                               <RoleSelector label="Payor" value={policyData.payor} onSelect={(p) => handleRoleSelect('payor', p)} contacts={contacts} onAddNew={onAddNewPerson} />
-                               <RoleSelector label="Beneficiary" value={policyData.beneficiary} onSelect={(p) => handleRoleSelect('beneficiary', p)} contacts={contacts} onAddNew={onAddNewPerson} isBeneficiary={true} />
+                               <RoleSelector label="Owner" value={roles.owner} onSelect={(p) => handleRoleSelect('owner', p)} contacts={contacts} onAddNew={() => onAddNewPerson('owner')} />
+                               <RoleSelector label="Insured" value={roles.insured} onSelect={(p) => handleRoleSelect('insured', p)} contacts={contacts} onAddNew={() => onAddNewPerson('insured')} />
+                               <RoleSelector label="Payor" value={roles.payor} onSelect={(p) => handleRoleSelect('payor', p)} contacts={contacts} onAddNew={() => onAddNewPerson('payor')} />
+                               <RoleSelector label="Beneficiary" value={policyData.beneficiary} onSelect={(p) => handleRoleSelect('beneficiary', p)} contacts={contacts} onAddNew={() => onAddNewPerson('beneficiary')} isBeneficiary={true} />
                             </div>
                         </div>
                     </div>

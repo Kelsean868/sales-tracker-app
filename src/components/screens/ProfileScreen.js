@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { doc, updateDoc, collection, onSnapshot, query, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -7,19 +7,29 @@ import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, U
 import { USER_ROLES } from '../../constants';
 import { themes } from '../../themes';
 
-const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storage, onOpenAddUserModal, onOpenEditUserModal, addToast, onLogout }) => {
+const ProfileScreen = ({ 
+    isOpen, 
+    onClose, 
+    user, 
+    userId, 
+    onUpdateUser, 
+    storage, 
+    onOpenAddUserModal, 
+    onOpenEditUserModal, 
+    addToast, 
+    onLogout,
+    allUsers,
+    teams,
+    units,
+    branches,
+    regions
+}) => {
     const [activeTab, setActiveTab] = useState('profile');
     const [isEditing, setIsEditing] = useState(false);
     const [profileData, setProfileData] = useState({});
     const [settings, setSettings] = useState({});
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef(null);
-    
-    const [allUsers, setAllUsers] = useState([]);
-    const [teams, setTeams] = useState([]);
-    const [units, setUnits] = useState([]);
-    const [branches, setBranches] = useState([]);
-    const [regions, setRegions] = useState([]);
     const [newOrgUnit, setNewOrgUnit] = useState({ name: '', type: '' });
 
     const auth = getAuth();
@@ -53,35 +63,6 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
         defaultReportRange: 'weekly',
         ...user?.settings,
     }), [user]);
-
-    useEffect(() => {
-        if (!isOpen || !canManage || !db) {
-            return; 
-        }
-
-        const collectionsToListen = {
-            users: setAllUsers,
-            teams: setTeams,
-            units: setUnits,
-            branches: setBranches,
-            regions: setRegions,
-        };
-
-        const unsubscribes = Object.entries(collectionsToListen).map(([key, setter]) => {
-            return onSnapshot(query(collection(db, key)), (snapshot) => {
-                const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                setter(data);
-            }, (error) => {
-                console.error(`Error fetching real-time ${key}:`, error);
-            });
-        });
-
-        return () => {
-            unsubscribes.forEach(unsub => unsub());
-        };
-
-    }, [isOpen, canManage, db]);
-
 
     useEffect(() => {
         if (isOpen) {
@@ -127,7 +108,7 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
 
     const handleSave = async () => {
         if (!userId) return;
-        const userDocRef = doc(db, 'users', userId);
+        const userDocRef = doc(getFirestore(), 'users', userId);
         try {
             const dataToUpdate = { ...profileData, settings: settings };
             await updateDoc(userDocRef, dataToUpdate);
@@ -162,7 +143,7 @@ const ProfileScreen = ({ isOpen, onClose, user, userId, onUpdateUser, db, storag
             try { await getDownloadURL(storageRef); await deleteObject(storageRef); } catch (error) { /* Ignore */ }
             const snapshot = await uploadBytes(storageRef, file);
             const downloadURL = await getDownloadURL(snapshot.ref);
-            const userDocRef = doc(db, 'users', userId);
+            const userDocRef = doc(getFirestore(), 'users', userId);
             await updateDoc(userDocRef, { photoURL: downloadURL });
             onUpdateUser({ ...user, photoURL: downloadURL });
             addToast('Profile picture updated!', 'success');

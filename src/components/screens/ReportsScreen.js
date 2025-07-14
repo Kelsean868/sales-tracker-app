@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Download, Calendar, Users } from 'lucide-react';
 import Papa from 'papaparse';
 import Card from '../ui/Card';
+import { ACTIVITY_POINTS_SYSTEM } from '../../constants';
 
 // Constants
 const TIME_RANGES = {
@@ -281,9 +282,13 @@ const TeamReports = ({ data, users }) => {
         return users.map(user => {
             const userActivities = data.activities.filter(a => a.userId === user.id);
             const userPolicies = data.policies.filter(p => p.userId === user.id);
+            const allActivities = Object.values(ACTIVITY_POINTS_SYSTEM).flat();
             return {
                 name: user.name,
-                points: userActivities.reduce((sum, act) => sum + (act.points || 0), 0),
+                points: userActivities.reduce((sum, act) => {
+                    const activity = allActivities.find(a => a.name === act.type);
+                    return sum + (activity ? activity.points : 0);
+                }, 0),
                 premium: userPolicies.reduce((sum, pol) => sum + pol.premium, 0),
                 activities: userActivities.length,
             };

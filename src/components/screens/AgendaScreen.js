@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Users, Briefcase, PhoneCall, CheckSquare } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, Users, Briefcase, PhoneCall, CheckSquare } from 'lucide-react';
 import Card from '../ui/Card';
 
 const AgendaScreen = ({ activities, currentUser, allUsers }) => {

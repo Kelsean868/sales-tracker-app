@@ -8,7 +8,7 @@ import {
     signOut,
     getIdTokenResult
 } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, where, updateDoc, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, updateDoc, orderBy, limit, startAfter, Timestamp, getDocs } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -38,8 +38,6 @@ import EditUserModal from './components/modals/EditUserModal';
 import UniversalSearchModal from './components/modals/UniversalSearchModal';
 import AddPersonModal from './components/modals/AddPersonModal';
 import { NotificationProvider, useNotification } from './context/NotificationContext';
-import { ACTIVITY_POINTS, USER_ROLES } from './constants';
-
 
 const firebaseConfig = {
     apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
@@ -57,7 +55,6 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const functions = getFunctions(app);
 
-// --- Temporary Auth Screen Component ---
 const AuthScreen = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -66,7 +63,6 @@ const AuthScreen = () => {
     const handleAuthAction = async (authFunction) => {
         try {
             const userCredential = await authFunction(auth, email, password);
-            // Force a refresh of the user's ID token to get new custom claims
             if (userCredential.user) {
                 await getIdTokenResult(userCredential.user, true);
             }
@@ -91,7 +87,6 @@ const AuthScreen = () => {
     );
 };
 
-
 const AppContent = () => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -107,6 +102,7 @@ const AppContent = () => {
     const [teams, setTeams] = useState([]);
     const [units, setUnits] = useState([]);
     const [branches, setBranches] = useState([]);
+    const [regions, setRegions] = useState([]);
 
     // Modal states
     const [isProfileOpen, setProfileOpen] = useState(false);
@@ -133,6 +129,12 @@ const AppContent = () => {
     const [activityTarget, setActivityTarget] = useState(null);
     const [selectedPolicy, setSelectedPolicy] = useState(null);
     const [userToEdit, setUserToEdit] = useState(null);
+    
+    // Pagination states
+    const [lastLead, setLastLead] = useState(null);
+    const [lastClient, setLastClient] = useState(null);
+    const [lastPolicy, setLastPolicy] = useState(null);
+    const [loadingMore, setLoadingMore] = useState(false);
 
     const { addToast } = useNotification();
     
@@ -140,8 +142,7 @@ const AppContent = () => {
         const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser && !firebaseUser.isAnonymous) {
                 try {
-                    const idTokenResult = await getIdTokenResult(firebaseUser, true); // Force refresh
-                    console.log("Custom claims from onAuthStateChanged:", JSON.stringify(idTokenResult.claims, null, 2));
+                    await getIdTokenResult(firebaseUser, true); 
                 } catch (error) {
                     console.error("Error getting token result in onAuthStateChanged:", error);
                 }
@@ -165,42 +166,71 @@ const AppContent = () => {
         return () => unsubscribeAuth();
     }, []);
 
+    const fetchMoreData = useCallback(async (collectionName) => {
+        if (loadingMore) return;
+        setLoadingMore(true);
+
+        let lastDoc, setLastDoc, setData;
+        if (collectionName === 'leads') { lastDoc = lastLead; setLastDoc = setLastLead; setData = setLeads; }
+        else if (collectionName === 'clients') { lastDoc = lastClient; setLastDoc = setLastClient; setData = setClients; }
+        else if (collectionName === 'policies') { lastDoc = lastPolicy; setLastDoc = setLastPolicy; setData = setPolicies; }
+        else { setLoadingMore(false); return; }
+
+        try {
+            const q = query(collection(db, collectionName), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(25));
+            const documentSnapshots = await getDocs(q);
+            const lastVisible = documentSnapshots.docs[documentSnapshots.docs.length-1];
+            if(lastVisible) setLastDoc(lastVisible);
+
+            const newDocs = documentSnapshots.docs.map(d => ({id: d.id, ...d.data()}));
+            setData(prevData => [...prevData, ...newDocs]);
+        } catch (error) {
+            console.error(`Error fetching more ${collectionName}:`, error);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [lastLead, lastClient, lastPolicy, loadingMore]);
+
     useEffect(() => {
         if (!user) return;
 
         const transformTimestamp = (item, key) => {
-            if (item[key] && typeof item[key] === 'object' && item[key].seconds) {
+            if (item[key] && item[key].seconds) {
                 return { ...item, [key]: new Timestamp(item[key].seconds, item[key].nanoseconds).toDate() };
             }
             return item;
         };
 
-        const dataCollections = {
-            leads: (data) => setLeads(data.map(item => transformTimestamp(item, 'createdAt'))),
-            clients: (data) => setClients(data.map(item => transformTimestamp(item, 'createdAt'))),
+        const paginatedCollections = { leads: setLeads, clients: setClients, policies: setPolicies };
+        const nonPaginatedCollections = {
             contacts: (data) => setContacts(data.map(item => transformTimestamp(item, 'createdAt'))),
             activities: (data) => setActivities(data.map(item => transformTimestamp(item, 'timestamp'))),
-            policies: (data) => setPolicies(data.map(item => transformTimestamp(item, 'createdAt'))),
         };
-
-        const globalCollections = { 
-            users: setAllUsers, 
-            teams: setTeams, 
-            units: setUnits, 
-            branches: setBranches 
-        };
+        const globalCollections = { users: setAllUsers, teams: setTeams, units: setUnits, branchs: setBranches, regions: setRegions };
 
         let unsubscribes = [];
 
-        Object.entries(dataCollections).forEach(([collectionName, setter]) => {
-            const q = query(collection(db, collectionName));
+        Object.entries(paginatedCollections).forEach(([collectionName, setter]) => {
+            const q = query(collection(db, collectionName), orderBy('createdAt', 'desc'), limit(25));
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
-                setter(data);
+                setter(data.map(item => transformTimestamp(item, 'createdAt')));
+                const lastVisible = snapshot.docs[snapshot.docs.length-1];
+                if(lastVisible){
+                    if (collectionName === 'leads') setLastLead(lastVisible);
+                    if (collectionName === 'clients') setLastClient(lastVisible);
+                    if (collectionName === 'policies') setLastPolicy(lastVisible);
+                }
             }, (error) => console.error(`Error fetching ${collectionName}:`, error));
             unsubscribes.push(unsubscribe);
         });
         
+        Object.entries(nonPaginatedCollections).forEach(([collectionName, setter]) => {
+            const q = query(collection(db, collectionName));
+            const unsubscribe = onSnapshot(q, (snapshot) => setter(snapshot.docs.map(d => ({id: d.id, ...d.data()}))), (error) => console.error(`Error fetching ${collectionName}:`, error));
+            unsubscribes.push(unsubscribe);
+        });
+
         Object.entries(globalCollections).forEach(([collectionName, setter]) => {
             const q = query(collection(db, collectionName));
             const unsubscribe = onSnapshot(q, (snapshot) => setter(snapshot.docs.map(d => ({id: d.id, ...d.data()}))));
@@ -221,33 +251,24 @@ const AppContent = () => {
     const handleClockIn = async () => {
         if (!user) return;
         try {
-            await addDoc(collection(db, 'workHistory'), {
-                userId: user.uid,
-                type: 'clock_in',
-                timestamp: serverTimestamp(),
-            });
-            await updateDoc(doc(db, 'users', user.uid), {
-                workStatus: 'available'
-            });
+            await addDoc(collection(db, 'workHistory'), { userId: user.uid, type: 'clock_in', timestamp: serverTimestamp() });
+            await updateDoc(doc(db, 'users', user.uid), { workStatus: 'available' });
             addToast('Clocked in successfully!', 'success');
         } catch (error) {
-            console.error("Error clocking in: ", error);
             addToast(`Failed to clock in: ${error.message}`, 'error');
         }
     };
 
-    const handleClockOut = async (summaryNotes) => {
+    const handleClockOut = async (clockOutData) => {
         if (!user) return;
         try {
             await addDoc(collection(db, 'workHistory'), {
                 userId: user.uid,
                 type: 'clock_out',
                 timestamp: serverTimestamp(),
-                summaryNotes: summaryNotes,
+                ...clockOutData,
             });
-            await updateDoc(doc(db, 'users', user.uid), {
-                workStatus: 'unavailable'
-            });
+            await updateDoc(doc(db, 'users', user.uid), { workStatus: 'unavailable' });
             setClockOutModalOpen(false);
             addToast('Clocked out successfully!', 'success');
         } catch (error) {
@@ -263,41 +284,26 @@ const AppContent = () => {
 
     const handleLogCallOutcome = async (activity, outcome, notes) => {
         try {
-            const activityRef = doc(db, 'activities', activity.id);
-            await updateDoc(activityRef, {
-                status: 'completed',
-                outcome: outcome,
-                notes: notes,
-                completedTimestamp: serverTimestamp(),
-            });
+            await updateDoc(doc(db, 'activities', activity.id), { status: 'completed', outcome, notes, completedTimestamp: serverTimestamp() });
             addToast(`Call logged as ${outcome}`, 'success');
         } catch (error) {
-            console.error('Error logging call outcome: ', error);
             addToast(`Failed to log call: ${error.message}`, 'error');
         }
     };
     
     const handleRescheduleActivity = (activity) => {
-        // For now, just log it. A proper reschedule modal would be needed.
-        console.log("Reschedule activity:", activity);
-        setCallingSessionModalOpen(false); // Close session to avoid conflicts
-        addToast("Rescheduling not implemented yet. Opening Log Activity instead.", "info");
+        setCallingSessionModalOpen(false);
+        addToast("Rescheduling not implemented. Opening Log Activity instead.", "info");
         setLogActivityModalOpen(true);
         setActivityTarget(activity);
     };
 
-
     const handleAddLead = async (leadData) => {
         if (!user) return;
         try {
-            await addDoc(collection(db, 'leads'), {
-                ...leadData,
-                ...getOrgIds(user),
-                createdAt: serverTimestamp(),
-            });
+            await addDoc(collection(db, 'leads'), { ...leadData, ...getOrgIds(user), createdAt: serverTimestamp() });
             addToast('Lead added successfully!', 'success');
         } catch (error) {
-            console.error("Error adding lead: ", error);
             addToast(`Failed to add lead: ${error.message}`, 'error');
         }
     };
@@ -305,11 +311,9 @@ const AppContent = () => {
     const handleUpdateLead = async (leadData) => {
         if (!user) return;
         try {
-            const leadRef = doc(db, 'leads', leadData.id);
-            await updateDoc(leadRef, leadData);
+            await updateDoc(doc(db, 'leads', leadData.id), leadData);
             addToast('Lead updated successfully!', 'success');
         } catch (error) {
-            console.error("Error updating lead: ", error);
             addToast(`Failed to update lead: ${error.message}`, 'error');
         }
     };
@@ -317,22 +321,16 @@ const AppContent = () => {
     const handleAddPolicy = async (policyData) => {
         if (!user) return;
         try {
-            const dataToSave = {
-                ...policyData,
-                ...getOrgIds(user),
-            };
-
+            const dataToSave = { ...policyData, ...getOrgIds(user), policyNumber_lowercase: policyData.policyNumber.toLowerCase() };
             if (policyData.id) {
-                const policyRef = doc(db, 'policies', policyData.id);
-                await setDoc(policyRef, dataToSave, { merge: true });
+                await setDoc(doc(db, 'policies', policyData.id), dataToSave, { merge: true });
                 addToast('Policy updated successfully!', 'success');
             } else {
-                await addDoc(collection(db, 'policies'), dataToSave);
+                await addDoc(collection(db, 'policies'), { ...dataToSave, createdAt: serverTimestamp() });
                 addToast('Policy added successfully!', 'success');
             }
             setPolicyModalOpen(false);
         } catch (error) {
-            console.error("Error saving policy: ", error);
             addToast(`Failed to save policy: ${error.message}`, 'error');
         }
     };
@@ -340,15 +338,10 @@ const AppContent = () => {
     const handleAddContact = async (contactData) => {
         if (!user) return null;
         try {
-            const docRef = await addDoc(collection(db, 'contacts'), {
-                ...contactData,
-                ...getOrgIds(user),
-                createdAt: serverTimestamp(),
-            });
+            const docRef = await addDoc(collection(db, 'contacts'), { ...contactData, ...getOrgIds(user), createdAt: serverTimestamp() });
             addToast('Contact added successfully!', 'success');
             return { id: docRef.id, ...contactData };
         } catch (error) {
-            console.error("Error adding contact: ", error);
             addToast(`Failed to add contact: ${error.message}`, 'error');
             return null;
         }
@@ -363,17 +356,20 @@ const AppContent = () => {
         }
 
         try {
-            await addDoc(collection(db, 'activities'), {
+            const dataToSave = {
                 type: activityData.type,
                 details: activityData.details,
                 relatedTo: activityData.relatedTo,
                 isScheduled: activityData.isScheduled,
                 scheduledTimestamp: activityData.scheduledTimestamp,
+                points: activityData.points,
+                apiValue: activityData.apiValue || null,
                 timestamp: serverTimestamp(),
-                points: ACTIVITY_POINTS[activityData.type] || 0,
                 ...getOrgIds(targetUser),
                 loggedBy: user.uid,
-            });
+            };
+
+            await addDoc(collection(db, 'activities'), dataToSave);
             addToast('Activity logged successfully!', 'success');
         } catch (error) {
             console.error("Error logging activity: ", error);
@@ -382,232 +378,115 @@ const AppContent = () => {
     };
 
     const handleCreateUser = async (newUserData) => {
-        const addUserFunction = httpsCallable(functions, 'addUser');
         try {
-            await addUserFunction(newUserData);
+            await httpsCallable(functions, 'addUser')(newUserData);
             addToast("User created successfully!", 'success');
         } catch (error) {
-            console.error("Error calling addUser function:", error);
             addToast(`Error: ${error.message}`, 'error');
         }
     };
 
     const handleEditUser = async (uidToEdit, updates) => {
-        const editUserFunction = httpsCallable(functions, 'editUser');
         try {
-            await editUserFunction({ uidToEdit, updates });
-            if (auth.currentUser) {
-                await getIdTokenResult(auth.currentUser, true);
-            }
+            await httpsCallable(functions, 'editUser')({ uidToEdit, updates });
+            if (auth.currentUser) await getIdTokenResult(auth.currentUser, true);
             addToast("User updated successfully! Claims refreshed.", 'success');
         } catch (error) {
-            console.error("Error calling editUser function:", error);
             addToast(`Error: ${error.message}`, 'error');
         }
     };
 
     const handleConvertToClient = async (lead) => {
-        const convertToClientFunction = httpsCallable(functions, 'convertToClient');
         try {
-            await convertToClientFunction({ leadId: lead.id, userId: lead.userId });
+            await httpsCallable(functions, 'convertToClient')({ leadId: lead.id, userId: lead.userId });
             addToast("Lead successfully converted to client!", 'success');
             setLeadDetailModalOpen(false);
         } catch (error) {
-            console.error("Error converting lead to client:", error);
             addToast(`Error: ${error.message}`, 'error');
         }
     };
 
     const handleUpdateClient = async (clientId, clientData) => {
         try {
-            const clientRef = doc(db, 'clients', clientId);
-            await updateDoc(clientRef, clientData);
+            await updateDoc(doc(db, 'clients', clientId), clientData);
             addToast('Client updated successfully!', 'success');
         } catch (error) {
-            console.error("Error updating client:", error);
             addToast(`Failed to update client: ${error.message}`, 'error');
         }
     };
 
-    const handleLogout = () => {
-        signOut(auth).catch(error => {
-            console.error("Error signing out:", error);
-            addToast("Failed to sign out.", 'error');
-        });
-    };
+    const handleLogout = () => signOut(auth).catch(error => addToast("Failed to sign out.", 'error'));
     
-    const handleOpenEditUserModal = (userToEdit) => {
-        setUserToEdit(userToEdit);
-        setEditUserModalOpen(true);
-    };
-
-    const handleSelectLead = (lead) => {
-        setSelectedLead(lead);
-        setLeadDetailModalOpen(true);
-    };
-
-    const handleSelectClient = (client) => {
-        setSelectedClient(client);
-        setClientModalOpen(true);
-    };
-    
-    const handleSelectPolicy = (policy) => {
-        setSelectedPolicy(policy);
-        setPolicyModalOpen(true);
-    };
-
-    const handleUpdateUser = useCallback((updatedUserData) => {
-        setUser(updatedUserData);
-    }, []);
-
+    const handleOpenEditUserModal = (userToEdit) => { setUserToEdit(userToEdit); setEditUserModalOpen(true); };
+    const handleSelectLead = (lead) => { setSelectedLead(lead); setLeadDetailModalOpen(true); };
+    const handleSelectClient = (client) => { setSelectedClient(client); setClientModalOpen(true); };
+    const handleSelectPolicy = (policy) => { setSelectedPolicy(policy); setPolicyModalOpen(true); };
+    const handleUpdateUser = useCallback((updatedUserData) => setUser(updatedUserData), []);
     const handleSearchClick = () => setSearchModalOpen(true);
     const handleCloseSearch = () => setSearchModalOpen(false);
-    
-    const handleOpenPolicyModal = (policy = null) => {
-        setSelectedPolicy(policy);
-        setPolicyModalOpen(true);
-    };
+    const handleOpenPolicyModal = (policy = null) => { setSelectedPolicy(policy); setPolicyModalOpen(true); };
 
     const renderActiveScreen = () => {
-        switch (activeScreen) {
-            case 'DASHBOARD': return <Dashboard activities={activities} leads={leads} policies={policies} clients={clients} currentUser={user} allUsers={allUsers} />;
-            case 'LEADS': return <LeadsScreen leads={leads} onSelectLead={handleSelectLead} allUsers={allUsers} currentUser={user} onUpdateLead={handleUpdateLead} />;
-            case 'PORTFOLIO': return <PortfolioScreen clients={clients} policies={policies} onSelectClient={handleSelectClient} onSelectPolicy={handleOpenPolicyModal}/>;
-            case 'AGENDA': return <AgendaScreen activities={activities} currentUser={user} allUsers={allUsers} onStartCallingSession={handleStartCallingSession} />;
-            case 'CONTACTS': return <ContactsScreen contacts={contacts} />;
-            case 'LEADERBOARD': return <LeaderboardScreen allUsers={allUsers} activities={activities} currentUser={user} />;
-            case 'REPORTS': return <ReportsScreen activities={activities} leads={leads} policies={policies} allUsers={allUsers} currentUser={user} />;
-            case 'GOALS': return <GoalsScreen activities={activities} userId={user?.uid} currentUser={user} allUsers={allUsers} />;
-            default: return <Dashboard activities={activities} leads={leads} policies={policies} clients={clients} currentUser={user} allUsers={allUsers} />;
-        }
+        const screens = {
+            'DASHBOARD': <Dashboard activities={activities} leads={leads} policies={policies} clients={clients} currentUser={user} allUsers={allUsers} />,
+            'LEADS': <LeadsScreen leads={leads} onSelectLead={handleSelectLead} allUsers={allUsers} currentUser={user} onUpdateLead={handleUpdateLead} fetchMoreData={() => fetchMoreData('leads')} loadingMore={loadingMore} />,
+            'PORTFOLIO': <PortfolioScreen clients={clients} policies={policies} onSelectClient={handleSelectClient} onSelectPolicy={handleOpenPolicyModal} fetchMoreData={fetchMoreData} loadingMore={loadingMore}/>,
+            'AGENDA': <AgendaScreen activities={activities} currentUser={user} allUsers={allUsers} onStartCallingSession={handleStartCallingSession} />,
+            'CONTACTS': <ContactsScreen contacts={contacts} />,
+            'LEADERBOARD': <LeaderboardScreen allUsers={allUsers} activities={activities} currentUser={user} />,
+            'REPORTS': <ReportsScreen activities={activities} leads={leads} policies={policies} allUsers={allUsers} currentUser={user} />,
+            'GOALS': <GoalsScreen activities={activities} userId={user?.uid} currentUser={user} allUsers={allUsers} />,
+        };
+        return screens[activeScreen] || screens['DASHBOARD'];
     };
 
-    if (loading) {
-        return (
-            <div className="bg-gray-900 text-white min-h-screen flex justify-center items-center">
-                <p>Initializing...</p>
-            </div>
-        );
-    }
-
-    if (!user) {
-        return <AuthScreen />;
-    }
+    if (loading) return <div className="bg-gray-900 text-white min-h-screen flex justify-center items-center"><p>Initializing...</p></div>;
+    if (!user) return <AuthScreen />;
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
-            <TopHeader 
-                user={user} 
-                onProfileClick={() => setProfileOpen(true)} 
-                onSearchClick={handleSearchClick}
-                isClockedIn={isClockedIn}
-                onClockIn={handleClockIn}
-                onClockOut={() => setClockOutModalOpen(true)}
-            />
+            <TopHeader user={user} onProfileClick={() => setProfileOpen(true)} onSearchClick={handleSearchClick} isClockedIn={isClockedIn} onClockIn={handleClockIn} onClockOut={() => setClockOutModalOpen(true)} />
             <main className="p-4 pb-20">{renderActiveScreen()}</main>
-            <SpeedDial 
-                onAddLead={() => setAddLeadModalOpen(true)} 
-                onAddContact={() => setAddContactModalOpen(true)}
-                onAddActivity={() => setLogActivityModalOpen(true)} 
-            />
+            <SpeedDial onAddLead={() => setAddLeadModalOpen(true)} onAddContact={() => setAddContactModalOpen(true)} onAddActivity={() => setLogActivityModalOpen(true)} />
             <BottomNav activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
 
             <ProfileScreen 
                 isOpen={isProfileOpen} 
-                onClose={() => setProfileOpen(false)}
-                user={user}
-                userId={user.uid}
-                onUpdateUser={handleUpdateUser}
-                db={db}
-                storage={storage}
-                onOpenAddUserModal={() => setAddUserModalOpen(true)}
-                onOpenEditUserModal={handleOpenEditUserModal}
-                addToast={addToast}
+                onClose={() => setProfileOpen(false)} 
+                user={user} 
+                userId={user.uid} 
+                onUpdateUser={handleUpdateUser} 
+                storage={storage} 
+                onOpenAddUserModal={() => setAddUserModalOpen(true)} 
+                onOpenEditUserModal={handleOpenEditUserModal} 
+                addToast={addToast} 
                 onLogout={handleLogout}
+                allUsers={allUsers}
+                teams={teams}
+                units={units}
+                branches={branches}
+                regions={regions}
             />
             <AddLeadModal isOpen={isAddLeadModalOpen} onClose={() => setAddLeadModalOpen(false)} onAddLead={handleAddLead} />
             <AddContactModal isOpen={isAddContactModalOpen} onClose={() => setAddContactModalOpen(false)} onAddContact={handleAddContact} />
             <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setAddUserModalOpen(false)} onAddUser={handleCreateUser} />
-             <AddPersonModal 
-                isOpen={isAddPersonModalOpen} 
-                onClose={() => setAddPersonModalOpen(false)} 
-                onSave={handleAddContact} 
-            />
-            <EditUserModal 
-                isOpen={isEditUserModalOpen}
-                onClose={() => setEditUserModalOpen(false)}
-                onSave={handleEditUser}
-                userToEdit={userToEdit}
-                teams={teams}
-                units={units}
-                branches={branches}
-            />
-            <LeadDetailModal 
-                isOpen={isLeadDetailModalOpen} 
-                onClose={() => {setLeadDetailModalOpen(false); setSelectedLead(null);}} 
-                lead={selectedLead}
-                onConvertToClient={handleConvertToClient}
-                onUpdateLead={handleUpdateLead}
-            />
-            <ClientModal 
-                isOpen={isClientModalOpen} 
-                onClose={() => setClientModalOpen(false)} 
-                client={selectedClient} 
-                policies={policies}
-                onAddPolicy={() => handleOpenPolicyModal(null)}
-                onSelectPolicy={handleOpenPolicyModal}
-                onUpdateClient={handleUpdateClient}
-            />
-            <LogActivityModal 
-                isOpen={isLogActivityModalOpen} 
-                onClose={() => setLogActivityModalOpen(false)} 
-                relatedTo={activityTarget} 
-                onLogActivity={handleLogActivity}
-                currentUser={user}
-                allUsers={allUsers}
-            />
-            <ClockOutModal
-                isOpen={isClockOutModalOpen}
-                onClose={() => setClockOutModalOpen(false)}
-                onClockOut={handleClockOut}
-                user={user}
-                activities={activities}
-            />
-            <CallingSessionModal
-                isOpen={isCallingSessionModalOpen}
-                onClose={() => setCallingSessionModalOpen(false)}
-                activities={callingSessionActivities}
-                onLogCall={handleLogCallOutcome}
-                onReschedule={handleRescheduleActivity}
-            />
-            <PolicyModal 
-              isOpen={isPolicyModalOpen} 
-              onClose={() => setPolicyModalOpen(false)} 
-              policy={selectedPolicy} 
-              client={selectedClient}
-              clientId={selectedClient?.id} 
-              onAddPolicy={handleAddPolicy}
-              contacts={contacts}
-              onAddNewPerson={() => setAddPersonModalOpen(true)}
-              ageCalculationType={user?.settings?.ageCalculation || 'ageNextBirthday'}
-            />
-            <UniversalSearchModal 
-                isOpen={isSearchModalOpen} 
-                onClose={handleCloseSearch}
-                onSelectLead={handleSelectLead}
-                onSelectClient={handleSelectClient}
-                onSelectPolicy={handleSelectPolicy}
-            />
+            <AddPersonModal isOpen={isAddPersonModalOpen} onClose={() => setAddPersonModalOpen(false)} onSave={handleAddContact} />
+            <EditUserModal isOpen={isEditUserModalOpen} onClose={() => setEditUserModalOpen(false)} onSave={handleEditUser} userToEdit={userToEdit} teams={teams} units={units} branches={branches} />
+            <LeadDetailModal isOpen={isLeadDetailModalOpen} onClose={() => {setLeadDetailModalOpen(false); setSelectedLead(null);}} lead={selectedLead} onConvertToClient={handleConvertToClient} onUpdateLead={handleUpdateLead} />
+            <ClientModal isOpen={isClientModalOpen} onClose={() => setClientModalOpen(false)} client={selectedClient} policies={policies} onAddPolicy={() => handleOpenPolicyModal(null)} onSelectPolicy={handleOpenPolicyModal} onUpdateClient={handleUpdateClient} />
+            <LogActivityModal isOpen={isLogActivityModalOpen} onClose={() => setLogActivityModalOpen(false)} relatedTo={activityTarget} onLogActivity={handleLogActivity} currentUser={user} allUsers={allUsers} />
+            <ClockOutModal isOpen={isClockOutModalOpen} onClose={() => setClockOutModalOpen(false)} onClockOut={handleClockOut} user={user} activities={activities} />
+            <CallingSessionModal isOpen={isCallingSessionModalOpen} onClose={() => setCallingSessionModalOpen(false)} activities={callingSessionActivities} onLogCall={handleLogCallOutcome} onReschedule={handleRescheduleActivity} />
+            <PolicyModal isOpen={isPolicyModalOpen} onClose={() => setPolicyModalOpen(false)} policy={selectedPolicy} client={selectedClient} clientId={selectedClient?.id} onAddPolicy={handleAddPolicy} contacts={contacts} onAddNewPerson={() => setAddPersonModalOpen(true)} ageCalculationType={user?.settings?.ageCalculation || 'ageNextBirthday'} />
+            <UniversalSearchModal isOpen={isSearchModalOpen} onClose={handleCloseSearch} onSelectLead={handleSelectLead} onSelectClient={handleSelectClient} onSelectPolicy={handleSelectPolicy} />
         </div>
     );
 };
 
-const App = () => {
-    return (
-        <NotificationProvider>
-            <AppContent />
-        </NotificationProvider>
-    );
-};
+const App = () => (
+    <NotificationProvider>
+        <AppContent />
+    </NotificationProvider>
+);
 
 export default App;

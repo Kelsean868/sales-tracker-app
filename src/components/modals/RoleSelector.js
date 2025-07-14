@@ -88,7 +88,7 @@ const RoleSelector = ({
                     <div className="p-2 border-t border-gray-700">
                         <button
                             type="button"
-                            onMouseDown={() => { onAddNew(); setDropdownOpen(false); }}
+                            onMouseDown={() => { onAddNew(label.toLowerCase()); setDropdownOpen(false); }}
                             className="w-full flex items-center justify-center px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-500 rounded-md"
                         >
                             <Plus size={16} className="mr-2"/> Create New Person
@@ -96,7 +96,7 @@ const RoleSelector = ({
                         {isBeneficiary && (
                             <button
                                 type="button"
-                                onMouseDown={() => handleSelect('Estate')}
+                                onMouseDown={() => handleSelect({ name: 'Estate' })}
                                 className="w-full mt-1 flex items-center justify-center px-4 py-2 text-sm text-white bg-gray-600 hover:bg-gray-500 rounded-md"
                             >
                                 <Shield size={16} className="mr-2"/> Set as Estate

@@ -18,7 +18,7 @@ const LeadDetailModal = ({ isOpen, onClose, lead, onLogActivity, onConvertToClie
 
     const formatStatus = (status) => {
         if (!status) return 'N/A';
-        return status.replace(/_/g, ' ').replace(/\w/g, l => l.toUpperCase());
+        return status.replace(/_/g, ' ').replace(/\w\S*/g, (w) => w.replace(/^\w/, (c) => c.toUpperCase()));
     };
     
     const handleChange = (e) => {

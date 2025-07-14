@@ -1,6 +1,5 @@
 import React from 'react';
 import { UserCircleIcon, BellIcon, MagnifyingGlassIcon, ArrowLeftOnRectangleIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
-import LiveClock from './LiveClock';
 import Weather from './Weather';
 
 const TopHeader = ({ user, onProfileClick, onSearchClick, isClockedIn, onClockIn, onClockOut }) => {
@@ -15,7 +14,6 @@ const TopHeader = ({ user, onProfileClick, onSearchClick, isClockedIn, onClockIn
             </div>
 
             <div className="flex-grow flex justify-center items-center">
-                <LiveClock />
                 <Weather />
             </div>
 

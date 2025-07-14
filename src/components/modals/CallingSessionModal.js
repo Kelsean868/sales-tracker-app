@@ -39,16 +39,13 @@ const CallingSessionModal = ({ isOpen, onClose, activities, onLogCall, onResched
 
     const handleLogOutcome = async (outcome) => {
         if (!currentActivity) return;
+        if (outcome === 'reschedule') {
+            onReschedule(currentActivity);
+            return;
+        }
         await onLogCall(currentActivity, outcome, callNotes);
         setOutcomes(prev => ({...prev, [currentActivity.id]: outcome}));
         // Do not automatically move to next, let the user decide.
-    };
-
-    const handleReschedule = () => {
-        if (!currentActivity) return;
-        onReschedule(currentActivity);
-        // Optionally close the session modal after opening reschedule modal
-        // onClose(); 
     };
 
     const CallOutcomeButton = ({ outcome, Icon, label }) => {

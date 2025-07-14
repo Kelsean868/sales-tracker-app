@@ -1,12 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Edit, Save, Trophy, Users } from 'lucide-react'; // Removed unused Target icon
+import { Edit, Save, Trophy, Users } from 'lucide-react';
 import Card from '../ui/Card';
-import { ACTIVITY_TYPES } from '../../constants';
+import { ACTIVITY_POINTS_SYSTEM } from '../../constants';
 
-/**
- * GoalsScreen component
- * Allows users to set and track their sales goals. Now supports a manager view.
- */
 const GoalsScreen = ({ userId, currentUser, allUsers = [], activities = [] }) => {
     const managementRoles = ['super_admin', 'admin', 'branch_manager', 'unit_manager'];
     const isManagerView = currentUser && managementRoles.includes(currentUser.role);
@@ -53,18 +49,17 @@ const GoalTracker = ({ targetUserId, activities, isManagerViewing }) => {
     const [period, setPeriod] = useState('weekly');
     const [isEditing, setIsEditing] = useState(false);
     
-    // Wrapped in useMemo to satisfy exhaustive-deps rule
-    const defaultGoals = useMemo(() => ({
-        new_contacts: 10,
-        appointments_booked: 5,
-        ffi_conducted: 3,
-        applications_submitted: 2,
-        api: 5000,
-    }), []);
+    const allActivities = useMemo(() => Object.values(ACTIVITY_POINTS_SYSTEM).flat(), []);
+    const defaultGoals = useMemo(() => {
+        const goals = {};
+        allActivities.forEach(activity => {
+            goals[activity.name] = 0;
+        });
+        return goals;
+    }, [allActivities]);
 
     const [goals, setGoals] = useState(defaultGoals);
 
-    // Load goals from localStorage
     useEffect(() => {
         if (!targetUserId) return;
         try {
@@ -77,7 +72,7 @@ const GoalTracker = ({ targetUserId, activities, isManagerViewing }) => {
         } catch (error) {
             console.error("Failed to load goals from localStorage", error);
         }
-    }, [targetUserId, defaultGoals]); // FIX: Added defaultGoals to dependency array
+    }, [targetUserId, defaultGoals]);
 
     const handleSaveGoals = () => {
         if (!targetUserId) return;
@@ -115,16 +110,14 @@ const GoalTracker = ({ targetUserId, activities, isManagerViewing }) => {
         }
 
         const userActivities = activities.filter(a => a.userId === targetUserId);
-        const relevantActivities = userActivities.filter(a => a.timestamp >= startOfPeriod);
-
-        return {
-            new_contacts: relevantActivities.filter(a => a.summaryKey === 'new_contact').length,
-            appointments_booked: relevantActivities.filter(a => a.summaryKey === 'appointment_booked').length,
-            ffi_conducted: relevantActivities.filter(a => a.type === ACTIVITY_TYPES.FFI).length,
-            applications_submitted: relevantActivities.filter(a => a.summaryKey === 'application_submitted').length,
-            api: relevantActivities.filter(a => a.type === ACTIVITY_TYPES.API).reduce((sum, a) => sum + (a.api || 0), 0),
-        };
-    }, [activities, period, targetUserId]);
+        const relevantActivities = userActivities.filter(a => new Date(a.timestamp) >= startOfPeriod);
+        
+        const calculatedProgress = {};
+        allActivities.forEach(activity => {
+            calculatedProgress[activity.name] = relevantActivities.filter(a => a.type === activity.name).length;
+        });
+        return calculatedProgress;
+    }, [activities, period, targetUserId, allActivities]);
 
     return (
         <div className="space-y-4">
@@ -144,11 +137,16 @@ const GoalTracker = ({ targetUserId, activities, isManagerViewing }) => {
             </div>
             
             <div className="space-y-4">
-                <GoalItem label="New Contacts" current={progress.new_contacts} target={goals.new_contacts} isEditing={isEditing && !isManagerViewing} onChange={(val) => handleGoalChange('new_contacts', val)} />
-                <GoalItem label="Appointments Booked" current={progress.appointments_booked} target={goals.appointments_booked} isEditing={isEditing && !isManagerViewing} onChange={(val) => handleGoalChange('appointments_booked', val)} />
-                <GoalItem label="FFI Conducted" current={progress.ffi_conducted} target={goals.ffi_conducted} isEditing={isEditing && !isManagerViewing} onChange={(val) => handleGoalChange('ffi_conducted', val)} />
-                <GoalItem label="Applications Submitted" current={progress.applications_submitted} target={goals.applications_submitted} isEditing={isEditing && !isManagerViewing} onChange={(val) => handleGoalChange('applications_submitted', val)} />
-                <GoalItem label="API" current={progress.api} target={goals.api} isEditing={isEditing && !isManagerViewing} isCurrency onChange={(val) => handleGoalChange('api', val)} />
+                {allActivities.map(activity => (
+                    <GoalItem 
+                        key={activity.name}
+                        label={activity.name} 
+                        current={progress[activity.name] || 0} 
+                        target={goals[activity.name] || 0} 
+                        isEditing={isEditing && !isManagerViewing} 
+                        onChange={(val) => handleGoalChange(activity.name, val)} 
+                    />
+                ))}
             </div>
         </div>
     );
