@@ -1,16 +1,7 @@
 import React from 'react';
-import { LayoutDashboard, Users, Briefcase, Calendar, BookUser, BarChart, Trophy, Target } from 'lucide-react';
+import { LayoutDashboard, Users, Briefcase, Calendar, BookUser, BarChart, Trophy, Target, FilePlus } from 'lucide-react';
 
-/**
- * BottomNav component
- * The main navigation bar at the bottom of the screen.
- * @param {object} props - Component props
- * @param {string} props.activeScreen - The currently active screen's name
- * @param {function} props.setActiveScreen - Function to change the active screen
- * @returns {JSX.Element} The rendered bottom navigation bar
- */
 const BottomNav = ({ activeScreen, setActiveScreen }) => {
-    // FIX: Restored all navigation items to the array.
     const navItems = [
         { name: 'DASHBOARD', icon: <LayoutDashboard size={24} />, label: 'Dashboard' },
         { name: 'LEADS', icon: <Users size={24} />, label: 'Leads' },
@@ -20,6 +11,7 @@ const BottomNav = ({ activeScreen, setActiveScreen }) => {
         { name: 'REPORTS', icon: <BarChart size={24} />, label: 'Reports' },
         { name: 'LEADERBOARD', icon: <Trophy size={24} />, label: 'Leaders' },
         { name: 'GOALS', icon: <Target size={24} />, label: 'Goals' },
+        { name: 'MANUAL_REPORT', icon: <FilePlus size={24} />, label: 'Manual Report' },
     ];
 
     return (

@@ -8,7 +8,7 @@ import {
     signOut,
     getIdTokenResult
 } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, updateDoc, orderBy, limit, startAfter, Timestamp, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, updateDoc, orderBy, limit, startAfter, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -25,6 +25,7 @@ import LeaderboardScreen from './components/screens/LeaderboardScreen';
 import ReportsScreen from './components/screens/ReportsScreen';
 import GoalsScreen from './components/screens/GoalsScreen';
 import ProfileScreen from './components/screens/ProfileScreen';
+import ManualReportScreen from './components/screens/ManualReportScreen';
 import AddLeadModal from './components/modals/AddLeadModal';
 import AddContactModal from './components/modals/AddContactModal';
 import LeadDetailModal from './components/modals/LeadDetailModal';
@@ -355,21 +356,28 @@ const AppContent = () => {
             return;
         }
 
-        try {
-            const dataToSave = {
-                type: activityData.type,
-                details: activityData.details,
-                relatedTo: activityData.relatedTo,
-                isScheduled: activityData.isScheduled,
-                scheduledTimestamp: activityData.scheduledTimestamp,
-                points: activityData.points,
-                apiValue: activityData.apiValue || null,
-                timestamp: serverTimestamp(),
-                ...getOrgIds(targetUser),
-                loggedBy: user.uid,
-            };
+        const activitiesToLog = Array.isArray(activityData) ? activityData : [activityData];
 
-            await addDoc(collection(db, 'activities'), dataToSave);
+        try {
+            const batch = writeBatch(db);
+            activitiesToLog.forEach(activity => {
+                const newActivityRef = doc(collection(db, "activities"));
+                const dataToSave = {
+                    type: activity.type,
+                    details: activity.details,
+                    relatedTo: activity.relatedTo,
+                    isScheduled: activity.isScheduled,
+                    scheduledTimestamp: activity.scheduledTimestamp,
+                    points: activity.points,
+                    apiValue: activity.apiValue || null,
+                    timestamp: activity.timestamp || serverTimestamp(),
+                    ...getOrgIds(targetUser),
+                    loggedBy: user.uid,
+                };
+                batch.set(newActivityRef, dataToSave);
+            });
+
+            await batch.commit();
             addToast('Activity logged successfully!', 'success');
         } catch (error) {
             console.error("Error logging activity: ", error);
@@ -436,6 +444,7 @@ const AppContent = () => {
             'LEADERBOARD': <LeaderboardScreen allUsers={allUsers} activities={activities} currentUser={user} />,
             'REPORTS': <ReportsScreen activities={activities} leads={leads} policies={policies} allUsers={allUsers} currentUser={user} />,
             'GOALS': <GoalsScreen activities={activities} userId={user?.uid} currentUser={user} allUsers={allUsers} />,
+            'MANUAL_REPORT': <ManualReportScreen currentUser={user} onLogActivity={handleLogActivity} addToast={addToast} />,
         };
         return screens[activeScreen] || screens['DASHBOARD'];
     };
