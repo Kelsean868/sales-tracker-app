@@ -93,17 +93,17 @@ const AppContent = () => {
     const [loading, setLoading] = useState(true);
     const [activeScreen, setActiveScreen] = useState('DASHBOARD');
     
-    // Data states
-    const [allUsers, setAllUsers] = useState([]);
-    const [leads, setLeads] = useState([]);
-    const [clients, setClients] = useState([]);
-    const [activities, setActivities] = useState([]);
-    const [contacts, setContacts] = useState([]);
-    const [policies, setPolicies] = useState([]);
-    const [teams, setTeams] = useState([]);
-    const [units, setUnits] = useState([]);
-    const [branches, setBranches] = useState([]);
-    const [regions, setRegions] = useState([]);
+    // Data states using Map to prevent duplicates
+    const [allUsers, setAllUsers] = useState(new Map());
+    const [leads, setLeads] = useState(new Map());
+    const [clients, setClients] = useState(new Map());
+    const [activities, setActivities] = useState(new Map());
+    const [contacts, setContacts] = useState(new Map());
+    const [policies, setPolicies] = useState(new Map());
+    const [teams, setTeams] = useState(new Map());
+    const [units, setUnits] = useState(new Map());
+    const [branches, setBranches] = useState(new Map());
+    const [regions, setRegions] = useState(new Map());
 
     // Modal states
     const [isProfileOpen, setProfileOpen] = useState(false);
@@ -170,21 +170,26 @@ const AppContent = () => {
     const fetchMoreData = useCallback(async (collectionName) => {
         if (loadingMore) return;
         setLoadingMore(true);
-
+    
         let lastDoc, setLastDoc, setData;
         if (collectionName === 'leads') { lastDoc = lastLead; setLastDoc = setLastLead; setData = setLeads; }
         else if (collectionName === 'clients') { lastDoc = lastClient; setLastDoc = setLastClient; setData = setClients; }
         else if (collectionName === 'policies') { lastDoc = lastPolicy; setLastDoc = setLastPolicy; setData = setPolicies; }
         else { setLoadingMore(false); return; }
-
+    
         try {
             const q = query(collection(db, collectionName), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(25));
             const documentSnapshots = await getDocs(q);
             const lastVisible = documentSnapshots.docs[documentSnapshots.docs.length-1];
             if(lastVisible) setLastDoc(lastVisible);
-
-            const newDocs = documentSnapshots.docs.map(d => ({id: d.id, ...d.data()}));
-            setData(prevData => [...prevData, ...newDocs]);
+    
+            setData(prevData => {
+                const newData = new Map(prevData);
+                documentSnapshots.docs.forEach(d => {
+                    newData.set(d.id, { id: d.id, ...d.data() });
+                });
+                return newData;
+            });
         } catch (error) {
             console.error(`Error fetching more ${collectionName}:`, error);
         } finally {
@@ -194,49 +199,52 @@ const AppContent = () => {
 
     useEffect(() => {
         if (!user) return;
-
+    
         const transformTimestamp = (item, key) => {
             if (item[key] && item[key].seconds) {
                 return { ...item, [key]: new Timestamp(item[key].seconds, item[key].nanoseconds).toDate() };
             }
             return item;
         };
-
-        const paginatedCollections = { leads: setLeads, clients: setClients, policies: setPolicies };
-        const nonPaginatedCollections = {
-            contacts: (data) => setContacts(data.map(item => transformTimestamp(item, 'createdAt'))),
-            activities: (data) => setActivities(data.map(item => transformTimestamp(item, 'timestamp'))),
-        };
-        const globalCollections = { users: setAllUsers, teams: setTeams, units: setUnits, branchs: setBranches, regions: setRegions };
-
-        let unsubscribes = [];
-
-        Object.entries(paginatedCollections).forEach(([collectionName, setter]) => {
-            const q = query(collection(db, collectionName), orderBy('createdAt', 'desc'), limit(25));
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const data = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
-                setter(data.map(item => transformTimestamp(item, 'createdAt')));
-                const lastVisible = snapshot.docs[snapshot.docs.length-1];
-                if(lastVisible){
-                    if (collectionName === 'leads') setLastLead(lastVisible);
-                    if (collectionName === 'clients') setLastClient(lastVisible);
-                    if (collectionName === 'policies') setLastPolicy(lastVisible);
+    
+        const subscribeToCollection = (collectionName, setter, lastDocSetter, paginated) => {
+            const q = paginated 
+                ? query(collection(db, collectionName), orderBy('createdAt', 'desc'), limit(25))
+                : query(collection(db, collectionName));
+            
+            return onSnapshot(q, (snapshot) => {
+                setter(prevData => {
+                    const newData = new Map(prevData);
+                    snapshot.docChanges().forEach(change => {
+                        const docData = { id: change.doc.id, ...change.doc.data() };
+                        if (change.type === "removed") {
+                            newData.delete(change.doc.id);
+                        } else {
+                            newData.set(change.doc.id, transformTimestamp(docData, 'createdAt'));
+                        }
+                    });
+                    return newData;
+                });
+    
+                if (paginated && snapshot.docs.length > 0) {
+                    const lastVisible = snapshot.docs[snapshot.docs.length-1];
+                    lastDocSetter(lastVisible);
                 }
             }, (error) => console.error(`Error fetching ${collectionName}:`, error));
-            unsubscribes.push(unsubscribe);
-        });
-        
-        Object.entries(nonPaginatedCollections).forEach(([collectionName, setter]) => {
-            const q = query(collection(db, collectionName));
-            const unsubscribe = onSnapshot(q, (snapshot) => setter(snapshot.docs.map(d => ({id: d.id, ...d.data()}))), (error) => console.error(`Error fetching ${collectionName}:`, error));
-            unsubscribes.push(unsubscribe);
-        });
-
-        Object.entries(globalCollections).forEach(([collectionName, setter]) => {
-            const q = query(collection(db, collectionName));
-            const unsubscribe = onSnapshot(q, (snapshot) => setter(snapshot.docs.map(d => ({id: d.id, ...d.data()}))));
-            unsubscribes.push(unsubscribe);
-        });
+        };
+    
+        const unsubscribes = [
+            subscribeToCollection('leads', setLeads, setLastLead, true),
+            subscribeToCollection('clients', setClients, setLastClient, true),
+            subscribeToCollection('policies', setPolicies, setLastPolicy, true),
+            subscribeToCollection('contacts', setContacts, null, false),
+            subscribeToCollection('activities', setActivities, null, false),
+            subscribeToCollection('users', setAllUsers, null, false),
+            subscribeToCollection('teams', setTeams, null, false),
+            subscribeToCollection('units', setUnits, null, false),
+            subscribeToCollection('branchs', setBranches, null, false),
+            subscribeToCollection('regions', setRegions, null, false)
+        ];
         
         return () => unsubscribes.forEach(unsub => unsub());
     }, [user]);
@@ -350,7 +358,7 @@ const AppContent = () => {
 
     const handleLogActivity = async (activityData) => {
         const targetUserId = activityData.logForUserId || user.uid;
-        const targetUser = allUsers.find(u => u.id === targetUserId);
+        const targetUser = allUsers.get(targetUserId);
         if (!targetUser) {
             addToast('Target user not found.', 'error');
             return;
@@ -436,14 +444,14 @@ const AppContent = () => {
 
     const renderActiveScreen = () => {
         const screens = {
-            'DASHBOARD': <Dashboard activities={activities} leads={leads} policies={policies} clients={clients} currentUser={user} allUsers={allUsers} />,
-            'LEADS': <LeadsScreen leads={leads} onSelectLead={handleSelectLead} allUsers={allUsers} currentUser={user} onUpdateLead={handleUpdateLead} fetchMoreData={() => fetchMoreData('leads')} loadingMore={loadingMore} />,
-            'PORTFOLIO': <PortfolioScreen clients={clients} policies={policies} onSelectClient={handleSelectClient} onSelectPolicy={handleOpenPolicyModal} fetchMoreData={fetchMoreData} loadingMore={loadingMore}/>,
-            'AGENDA': <AgendaScreen activities={activities} currentUser={user} allUsers={allUsers} onStartCallingSession={handleStartCallingSession} />,
-            'CONTACTS': <ContactsScreen contacts={contacts} />,
-            'LEADERBOARD': <LeaderboardScreen allUsers={allUsers} activities={activities} currentUser={user} />,
-            'REPORTS': <ReportsScreen activities={activities} leads={leads} policies={policies} allUsers={allUsers} currentUser={user} />,
-            'GOALS': <GoalsScreen activities={activities} userId={user?.uid} currentUser={user} allUsers={allUsers} />,
+            'DASHBOARD': <Dashboard activities={Array.from(activities.values())} leads={Array.from(leads.values())} policies={Array.from(policies.values())} clients={Array.from(clients.values())} currentUser={user} allUsers={Array.from(allUsers.values())} />,
+            'LEADS': <LeadsScreen leads={Array.from(leads.values())} onSelectLead={handleSelectLead} allUsers={Array.from(allUsers.values())} currentUser={user} onUpdateLead={handleUpdateLead} fetchMoreData={() => fetchMoreData('leads')} loadingMore={loadingMore} />,
+            'PORTFOLIO': <PortfolioScreen clients={Array.from(clients.values())} policies={Array.from(policies.values())} onSelectClient={handleSelectClient} onSelectPolicy={handleOpenPolicyModal} fetchMoreData={fetchMoreData} loadingMore={loadingMore}/>,
+            'AGENDA': <AgendaScreen activities={Array.from(activities.values())} currentUser={user} allUsers={Array.from(allUsers.values())} onStartCallingSession={handleStartCallingSession} />,
+            'CONTACTS': <ContactsScreen contacts={Array.from(contacts.values())} />,
+            'LEADERBOARD': <LeaderboardScreen allUsers={Array.from(allUsers.values())} activities={Array.from(activities.values())} currentUser={user} />,
+            'REPORTS': <ReportsScreen activities={Array.from(activities.values())} leads={Array.from(leads.values())} policies={Array.from(policies.values())} allUsers={Array.from(allUsers.values())} currentUser={user} />,
+            'GOALS': <GoalsScreen activities={Array.from(activities.values())} userId={user?.uid} currentUser={user} allUsers={Array.from(allUsers.values())} />,
             'MANUAL_REPORT': <ManualReportScreen currentUser={user} onLogActivity={handleLogActivity} addToast={addToast} />,
         };
         return screens[activeScreen] || screens['DASHBOARD'];
@@ -470,23 +478,23 @@ const AppContent = () => {
                 onOpenEditUserModal={handleOpenEditUserModal} 
                 addToast={addToast} 
                 onLogout={handleLogout}
-                allUsers={allUsers}
-                teams={teams}
-                units={units}
-                branches={branches}
-                regions={regions}
+                allUsers={Array.from(allUsers.values())}
+                teams={Array.from(teams.values())}
+                units={Array.from(units.values())}
+                branches={Array.from(branches.values())}
+                regions={Array.from(regions.values())}
             />
             <AddLeadModal isOpen={isAddLeadModalOpen} onClose={() => setAddLeadModalOpen(false)} onAddLead={handleAddLead} />
             <AddContactModal isOpen={isAddContactModalOpen} onClose={() => setAddContactModalOpen(false)} onAddContact={handleAddContact} />
             <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setAddUserModalOpen(false)} onAddUser={handleCreateUser} />
             <AddPersonModal isOpen={isAddPersonModalOpen} onClose={() => setAddPersonModalOpen(false)} onSave={handleAddContact} />
-            <EditUserModal isOpen={isEditUserModalOpen} onClose={() => setEditUserModalOpen(false)} onSave={handleEditUser} userToEdit={userToEdit} teams={teams} units={units} branches={branches} />
+            <EditUserModal isOpen={isEditUserModalOpen} onClose={() => setEditUserModalOpen(false)} onSave={handleEditUser} userToEdit={userToEdit} teams={Array.from(teams.values())} units={Array.from(units.values())} branches={Array.from(branches.values())} />
             <LeadDetailModal isOpen={isLeadDetailModalOpen} onClose={() => {setLeadDetailModalOpen(false); setSelectedLead(null);}} lead={selectedLead} onConvertToClient={handleConvertToClient} onUpdateLead={handleUpdateLead} />
-            <ClientModal isOpen={isClientModalOpen} onClose={() => setClientModalOpen(false)} client={selectedClient} policies={policies} onAddPolicy={() => handleOpenPolicyModal(null)} onSelectPolicy={handleOpenPolicyModal} onUpdateClient={handleUpdateClient} />
-            <LogActivityModal isOpen={isLogActivityModalOpen} onClose={() => setLogActivityModalOpen(false)} relatedTo={activityTarget} onLogActivity={handleLogActivity} currentUser={user} allUsers={allUsers} />
-            <ClockOutModal isOpen={isClockOutModalOpen} onClose={() => setClockOutModalOpen(false)} onClockOut={handleClockOut} user={user} activities={activities} />
+            <ClientModal isOpen={isClientModalOpen} onClose={() => setClientModalOpen(false)} client={selectedClient} policies={Array.from(policies.values())} onAddPolicy={() => handleOpenPolicyModal(null)} onSelectPolicy={handleOpenPolicyModal} onUpdateClient={handleUpdateClient} />
+            <LogActivityModal isOpen={isLogActivityModalOpen} onClose={() => setLogActivityModalOpen(false)} relatedTo={activityTarget} onLogActivity={handleLogActivity} currentUser={user} allUsers={Array.from(allUsers.values())} />
+            <ClockOutModal isOpen={isClockOutModalOpen} onClose={() => setClockOutModalOpen(false)} onClockOut={handleClockOut} user={user} activities={Array.from(activities.values())} />
             <CallingSessionModal isOpen={isCallingSessionModalOpen} onClose={() => setCallingSessionModalOpen(false)} activities={callingSessionActivities} onLogCall={handleLogCallOutcome} onReschedule={handleRescheduleActivity} />
-            <PolicyModal isOpen={isPolicyModalOpen} onClose={() => setPolicyModalOpen(false)} policy={selectedPolicy} client={selectedClient} clientId={selectedClient?.id} onAddPolicy={handleAddPolicy} contacts={contacts} onAddNewPerson={() => setAddPersonModalOpen(true)} ageCalculationType={user?.settings?.ageCalculation || 'ageNextBirthday'} />
+            <PolicyModal isOpen={isPolicyModalOpen} onClose={() => setPolicyModalOpen(false)} policy={selectedPolicy} client={selectedClient} clientId={selectedClient?.id} onAddPolicy={handleAddPolicy} contacts={Array.from(contacts.values())} onAddNewPerson={() => setAddPersonModalOpen(true)} ageCalculationType={user?.settings?.ageCalculation || 'ageNextBirthday'} />
             <UniversalSearchModal isOpen={isSearchModalOpen} onClose={handleCloseSearch} onSelectLead={handleSelectLead} onSelectClient={handleSelectClient} onSelectPolicy={handleSelectPolicy} />
         </div>
     );

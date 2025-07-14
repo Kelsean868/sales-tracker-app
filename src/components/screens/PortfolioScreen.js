@@ -91,7 +91,7 @@ const PortfolioScreen = ({ clients = [], policies = [], onSelectClient, onSelect
                 {filteredAndSortedItems.length > 0 ? (
                     filteredAndSortedItems.map((item, index) => {
                         const isLastElement = index === filteredAndSortedItems.length - 1;
-                        return <div ref={isLastElement ? lastElementRef : null} key={`${item.itemType}-${item.id}`}>
+                        return <div ref={isLastElement ? lastElementRef : null} key={`${item.itemType}-${item.id || index}`}>
                                  {item.itemType === 'Client' ? <ClientCard client={item} onClick={() => onSelectClient(item)} /> : <PolicyCard policy={item} onClick={() => onSelectPolicy(item)} />}
                                </div>
                     })

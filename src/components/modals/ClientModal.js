@@ -70,8 +70,8 @@ const ClientModal = ({ isOpen, onClose, client, policies = [], onAddPolicy, onSe
                     <div className="bg-gray-700/50 p-4 rounded-lg max-h-48 overflow-y-auto">
                         {clientPolicies.length > 0 ? (
                             <ul className="space-y-2">
-                                {clientPolicies.map(policy => (
-                                    <li key={policy.id} className="p-3 bg-gray-800 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-700" onClick={() => onSelectPolicy(policy)}>
+                                {clientPolicies.map((policy, index) => (
+                                    <li key={policy.id || index} className="p-3 bg-gray-800 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-700" onClick={() => onSelectPolicy(policy)}>
                                         <div className="flex items-center"><Shield size={16} className="mr-3 text-teal-400"/>
                                             <div>
                                                 <p className="font-semibold">Policy #{policy.policyNumber}</p>

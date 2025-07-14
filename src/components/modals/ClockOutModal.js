@@ -1,65 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, List, ArrowRight, ArrowLeft, Award, Star, ThumbsUp, Plus, Trash2 } from 'lucide-react';
-import { ACTIVITY_POINTS_SYSTEM } from '../../constants';
-
-const SUMMARY_ITEMS = {
-    "Prospecting Activities (other than calls)": [
-        { "label": "Prospecting emails sent", "key": "prospecting_outreach" },
-        { "label": "Seminars Booked", "key": "seminars_booked" },
-        { "label": "Seminars Conducted", "key": "seminars_conducted" },
-        { "label": "Trade shows Booked", "key": "trade_shows_booked" },
-        { "label": "Trade shows Attended", "key": "trade_shows_attended" },
-        { "label": "Social Media Posts", "key": "social_media_posts" },
-        { "label": "Time spent Cold Canvasing", "key": "time_spent_cold_canvasing", "isTime": true },
-        { "label": "Time spent Online Prospecting", "key": "time_spent_online_prospecting", "isTime": true },
-    ],
-    "Prospecting Calls": [
-        { "label": "Total", "key": "prospecting_calls" },
-        { "label": "Old", "key": "prospecting_calls_old" },
-        { "label": "New", "key": "prospecting_calls_new" },
-    ],
-    "Appointments": [
-        { "label": "Booked", "key": "appointments_booked" },
-        { "label": "Cancelled/Postponed", "key": "appointments_cancelled" },
-        { "label": "Conducted", "key": "appointments_conducted" },
-    ],
-    "FFI (Fact Find Interviews)": [
-        { "label": "Booked", "key": "ffi_booked" },
-        { "label": "Conducted", "key": "ffi_conducted" },
-    ],
-    "Solutions": [
-        { "label": "Presented", "key": "solutions_presented" },
-    ],
-    "Closing Interviews": [
-        { "label": "Booked", "key": "closing_interviews_booked" },
-        { "label": "Conducted", "key": "closing_interviews_conducted" },
-        { "label": "Postponed/Cancelled", "key": "closing_interviews_cancelled" },
-    ],
-    "Sales": [
-        { "label": "Potential Sales where Prospect/s agree to buy (in the future months)", "key": "sales_agreed_future" },
-        { "label": "Potential Sales where Prospect/s agree to buy (within the current month)", "key": "sales_agreed_now" },
-        { "label": "API Potential of new sales (no cash collected)", "key": "api_potential_no_cash" },
-        { "label": "API of New sales (cash collected)", "key": "api_cash_collected", "isCurrency": true },
-        { "label": "Sales made with cash collected", "key": "sales_with_cash" },
-        { "label": "Number of Applications", "key": "apps_submitted" },
-        { "label": "Number of New Clients", "key": "new_clients" },
-    ],
-    "New Names": [
-        { "label": "Referrals", "key": "referrals_earned" },
-        { "label": "Names from Seminars Conducted", "key": "names_from_seminars" },
-        { "label": "Names from Trade shows", "key": "names_from_trade_shows" },
-        { "label": "Names from Cold Canvasing", "key": "names_from_cold_canvasing" },
-        { "label": "Names from Online Prospecting", "key": "names_from_online_prospecting" },
-        { "label": "Names from Social Media Posts", "key": "names_from_social_media" },
-        { "label": "Names from Other", "key": "names_from_other" },
-    ],
-    "Servicing Activities": [
-        { "label": "Premium Arrears Collected", "key": "premiums_paid" },
-        { "label": "Reinstatements Completed", "key": "policies_reinstated" },
-        { "label": "Orphans Adopted", "key": "service_reviews_submitted" },
-        { "label": "Other", "key": "other_servicing_activities" },
-    ]
-};
+import { ACTIVITY_POINTS_SYSTEM, REPORT_SUMMARY_CATEGORIES } from '../../constants';
 
 const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
     const [page, setPage] = useState(1);
@@ -85,11 +26,12 @@ const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
 
             const todaysActivities = activities.filter(activity => {
                 const activityDate = new Date(activity.timestamp);
+                // Ensure activity belongs to the current user and occurred today
                 return activity.userId === user.uid && activityDate >= today;
             });
             
             const summary = {};
-            Object.values(SUMMARY_ITEMS).flat().forEach(item => {
+            Object.values(REPORT_SUMMARY_CATEGORIES).flat().forEach(item => {
                 const activitiesOfType = todaysActivities.filter(a => a.summaryKey === item.key);
                 if (item.isCurrency) {
                     summary[item.key] = activitiesOfType.reduce((acc, a) => acc + (a.apiValue || 0), 0);
@@ -101,9 +43,10 @@ const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
                 }
             });
 
-            summary.prospecting_calls = summary.prospecting_calls_old + summary.prospecting_calls_new;
-            summary.appointments_cancelled = summary.appointments_booked - summary.appointments_conducted;
-            summary.closing_interviews_cancelled = summary.closing_interviews_booked - summary.closing_interviews_conducted;
+            // Special calculations for combined or derived metrics
+            summary.prospecting_calls = (summary.prospecting_calls_old || 0) + (summary.prospecting_calls_new || 0);
+            summary.appointments_cancelled = (summary.appointments_booked || 0) - (summary.appointments_conducted || 0);
+            summary.closing_interviews_cancelled = (summary.closing_interviews_booked || 0) - (summary.closing_interviews_conducted || 0);
             
             summary.points = todaysActivities.reduce((acc, a) => acc + (a.points || 0), 0);
             setDailySummary(summary);
@@ -181,7 +124,7 @@ const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
                     </div>
                 </div>
 
-                {Object.entries(SUMMARY_ITEMS).map(([category, items]) => (
+                {Object.entries(REPORT_SUMMARY_CATEGORIES).map(([category, items]) => (
                     <div key={category}>
                         <div className="bg-gray-700/50 rounded-lg">
                             <h4 className="text-lg font-semibold p-3 border-b border-gray-600">{category}</h4>
@@ -191,7 +134,7 @@ const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
                                         <tr key={item.key}>
                                             <td className="p-3 text-gray-300">{item.label}</td>
                                             <td className="p-3 text-right font-bold text-white">
-                                                {item.isCurrency ? `$${(dailySummary[item.key] || 0).toLocaleString()}` : (dailySummary[item.key] || 0)}
+                                                {item.isCurrency ? `$${(dailySummary[item.key] || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : (dailySummary[item.key] || 0)}
                                                 {item.isTime && ' hrs'}
                                             </td>
                                         </tr>

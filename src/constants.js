@@ -52,9 +52,71 @@ export const ACTIVITY_POINTS_SYSTEM = {
     { "name": "Reinstated a Lapsed Policy", "points": 10, "summaryKey": "policies_reinstated" },
     { "name": "Paid Outstanding Premiums to Prevent Lapse", "points": 5, "summaryKey": "premiums_paid" }
   ],
-  "Professional Development": [
+  "Training": [
     { "name": "Attended Insurance/Sales Training", "points": 6, "summaryKey": "training_attended" }
   ]
+};
+
+export const REPORT_SUMMARY_CATEGORIES = {
+    "Prospecting Activities (other than calls)": [
+        { "label": "Prospecting emails sent", "key": "prospecting_outreach" },
+        { "label": "Seminars Booked", "key": "seminars_booked" },
+        { "label": "Seminars Conducted", "key": "seminars_conducted" },
+        { "label": "Trade shows Booked", "key": "trade_shows_booked" },
+        { "label": "Trade shows Attended", "key": "trade_shows_attended" },
+        { "label": "Social Media Posts", "key": "social_media_posts" },
+        { "label": "Time spent Cold Canvasing", "key": "time_spent_cold_canvasing", "isTime": true },
+        { "label": "Time spent Online Prospecting", "key": "time_spent_online_prospecting", "isTime": true },
+    ],
+    "Prospecting Calls": [
+        { "label": "Total", "key": "prospecting_calls" },
+        { "label": "Old", "key": "prospecting_calls_old" },
+        { "label": "New", "key": "prospecting_calls_new" },
+    ],
+    "Appointments": [
+        { "label": "Booked", "key": "appointments_booked" },
+        { "label": "Cancelled/Postponed", "key": "appointments_cancelled" },
+        { "label": "Conducted", "key": "appointments_conducted" },
+    ],
+    "FFI (Fact Find Interviews)": [
+        { "label": "Booked", "key": "ffi_booked" },
+        { "label": "Conducted", "key": "ffi_conducted" },
+    ],
+    "Solutions": [
+        { "label": "Presented", "key": "solutions_presented" },
+    ],
+    "Closing Interviews": [
+        { "label": "Booked", "key": "closing_interviews_booked" },
+        { "label": "Conducted", "key": "closing_interviews_conducted" },
+        { "label": "Postponed/Cancelled", "key": "closing_interviews_cancelled" },
+    ],
+    "Sales": [
+        { "label": "Potential Sales where Prospect/s agree to buy (in the future months)", "key": "sales_agreed_future" },
+        { "label": "Potential Sales where Prospect/s agree to buy (within the current month)", "key": "sales_agreed_now" },
+        { "label": "API Potential of new sales (no cash collected)", "key": "api_potential_no_cash" },
+        { "label": "API of New sales (cash collected)", "key": "api_cash_collected", "isCurrency": true },
+        { "label": "Sales made with cash collected", "key": "sales_with_cash" },
+        { "label": "Number of Applications", "key": "apps_submitted" },
+        { "label": "Number of New Clients", "key": "new_clients" },
+    ],
+    "New Names": [
+        { "label": "Referrals", "key": "referrals_earned" },
+        { "label": "Names from Seminars Conducted", "key": "names_from_seminars" },
+        { "label": "Names from Trade shows", "key": "names_from_trade_shows" },
+        { "label": "Names from Cold Canvasing", "key": "names_from_cold_canvasing" },
+        { "label": "Names from Online Prospecting", "key": "names_from_online_prospecting" },
+        { "label": "Names from Social Media Posts", "key": "names_from_social_media" },
+        { "label": "Names from Other", "key": "names_from_other" },
+    ],
+    "Servicing Activities": [
+        { "label": "Premium Arrears Collected", "key": "premiums_paid" },
+        { "label": "Reinstatements Completed", "key": "policies_reinstated" },
+        { "label": "Orphans Adopted", "key": "service_reviews_submitted" },
+        { "label": "Other", "key": "other_servicing_activities" },
+    ],
+    "Training": [
+      { "label": "Attended Insurance/Sales Training", "key": "training_attended" }
+    ]
 };
 
 // Lead Pipeline Stages
