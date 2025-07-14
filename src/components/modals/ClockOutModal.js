@@ -167,7 +167,7 @@ const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
     if (!isOpen) return null;
 
     const renderSummaryPage = () => (
-        <>
+        <> 
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-amber-400">End of Day Summary</h2>
                 <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>

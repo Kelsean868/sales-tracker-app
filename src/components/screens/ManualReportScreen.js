@@ -18,6 +18,17 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
         return map;
     }, []);
 
+    const totalPoints = useMemo(() => {
+        let points = 0;
+        for (const [activityName, count] of Object.entries(activityCounts)) {
+            const activityDef = allActivitiesMap.get(activityName);
+            if (activityDef && count > 0) {
+                points += activityDef.points * count;
+            }
+        }
+        return points;
+    }, [activityCounts, allActivitiesMap]);
+
     const handleCountChange = (activityName, count) => {
         const newCount = Math.max(0, parseInt(count, 10) || 0);
         setActivityCounts(prev => ({ ...prev, [activityName]: newCount }));
@@ -95,6 +106,13 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
                 <div className="p-4">
                     <label htmlFor="report-date" className="block text-sm font-medium text-gray-400 mb-2 flex items-center"><Calendar className="mr-2" />Report Date</label>
                     <input type="date" id="report-date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="w-full bg-gray-700 border-gray-600 rounded-md p-2"/>
+                </div>
+            </Card>
+
+            <Card>
+                <div className="p-4 text-center">
+                    <h3 className="text-3xl font-bold text-amber-400">{totalPoints} Points</h3>
+                    <p className="text-sm text-gray-400">Total Points for this Report</p>
                 </div>
             </Card>
 
