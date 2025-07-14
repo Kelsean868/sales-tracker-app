@@ -3,21 +3,21 @@ import { Calendar, Save, ArrowLeft } from 'lucide-react';
 import Card from '../ui/Card';
 import { ACTIVITY_POINTS_SYSTEM, REPORT_SUMMARY_CATEGORIES } from '../../constants';
 
-// Helper to get the Sunday (YYYY-MM-DD) of the week for a given date
-const getSundayOfWeek = (dateString) => {
-    const date = new Date(dateString + 'T00:00:00'); // Add T00:00:00 to avoid timezone issues
-    const dayOfWeek = date.getDay(); // 0 for Sunday, 1 for Monday, ..., 6 for Saturday
-    const diff = (dayOfWeek === 0) ? 0 : -dayOfWeek; // Days to subtract to get to the most recent Sunday
-    const sunday = new Date(date.setDate(date.getDate() + diff));
-    return sunday.toISOString().slice(0, 10);
+// Helper to get the Sunday of the week for a given date
+const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay(); // 0 for Sunday, 1 for Monday, etc.
+    const diff = d.getDate() - day; // Adjust to Sunday
+    return new Date(d.setDate(diff));
 };
 
 const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
     const [reportType, setReportType] = useState('Daily'); // 'Daily', 'Weekly', 'Monthly'
     const [reportDate, setReportDate] = useState(() => {
         const today = new Date();
+        today.setDate(today.getDate() - 1); // Default to yesterday
         return today.toISOString().slice(0, 10);
-    }); // YYYY-MM-DD for Daily/Weekly, YYYY-MM-01 for Monthly
+    });
     const [activityCounts, setActivityCounts] = useState({});
     const [salesDetails, setSalesDetails] = useState([]);
     const [showSummary, setShowSummary] = useState(false);
@@ -62,7 +62,6 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
     const handleSaleDetailChange = (index, field, value) => {
         setSalesDetails(prev => {
             const newSales = [...prev];
-            // Ensure API and Cash Collected are treated as numbers, default to 0 if blank
             newSales[index] = { 
                 ...newSales[index], 
                 [field]: (field === 'api' || field === 'cashCollected') ? (parseFloat(value) || 0) : value 
@@ -79,18 +78,15 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
             timestamp = new Date(reportDate + 'T00:00:00');
             displayDate = reportDate;
         } else if (reportType === 'Weekly') {
-            const sundayOfWeek = getSundayOfWeek(reportDate);
-            timestamp = new Date(sundayOfWeek + 'T00:00:00');
-            
-            // For display, show the range Sunday-Saturday
-            const sunday = new Date(timestamp);
+            const weekStartDate = getStartOfWeek(new Date(reportDate + 'T00:00:00'));
+            timestamp = weekStartDate;
+            const sunday = weekStartDate;
             const saturday = new Date(sunday);
             saturday.setDate(sunday.getDate() + 6); 
             displayDate = `${sunday.toISOString().slice(0, 10)} to ${saturday.toISOString().slice(0, 10)}`;
-
         } else if (reportType === 'Monthly') {
-            timestamp = new Date(reportDate + '-01' + 'T00:00:00');
-            displayDate = reportDate.slice(0, 7); // YYYY-MM
+            timestamp = new Date(reportDate.slice(0, 7) + '-01T00:00:00');
+            displayDate = reportDate.slice(0, 7);
         }
 
         if (isNaN(timestamp.getTime())) {
@@ -112,7 +108,7 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
                         isScheduled: false,
                         summaryKey: activityDef.summaryKey,
                         reportType: reportType,
-                        reportPeriodDisplay: displayDate, // To show in summary
+                        reportPeriodDisplay: displayDate,
                     };
 
                     if (activityName === "Sale Closed (Apps filled, premium collected)" && salesDetails[i]) {
@@ -149,96 +145,72 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
             addToast(`Error submitting report: ${error.message}`, "error");
         }
     };
+    
+    const maxDate = useMemo(() => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        return yesterday.toISOString().slice(0, 10);
+    }, []);
+
+    const maxMonth = useMemo(() => {
+        const lastMonth = new Date();
+        lastMonth.setMonth(lastMonth.getMonth() - 1);
+        return lastMonth.toISOString().slice(0, 7);
+    }, []);
 
     const handleReportTypeChange = (type) => {
         setReportType(type);
-        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
         if (type === 'Daily') {
-            setReportDate(today.toISOString().slice(0, 10));
+            setReportDate(yesterday.toISOString().slice(0, 10));
         } else if (type === 'Weekly') {
-            // Set to current date, getSundayOfWeek will handle finding the Sunday
-            setReportDate(today.toISOString().slice(0, 10));
+            const lastWeekSunday = getStartOfWeek(yesterday);
+            setReportDate(lastWeekSunday.toISOString().slice(0, 10));
         } else if (type === 'Monthly') {
-            setReportDate(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10));
+            setReportDate(maxMonth + '-01');
+        }
+    };
+    
+    const handleDateChange = (e) => {
+        if (reportType === 'Weekly') {
+            const selectedDate = new Date(e.target.value + 'T00:00:00');
+            const weekStartDate = getStartOfWeek(selectedDate);
+            setReportDate(weekStartDate.toISOString().slice(0,10));
+        } else {
+             setReportDate(e.target.value);
         }
     };
 
-    // Aggregate activities for summary display
     const summarizedActivities = useMemo(() => {
         const summary = {};
-
-        // Initialize all summary items based on REPORT_SUMMARY_CATEGORIES
         Object.values(REPORT_SUMMARY_CATEGORIES).flat().forEach(item => {
-            summary[item.key] = {
-                count: 0,
-                points: 0,
-                sales: [], // Only for sales category, initialized here
-                isCurrency: item.isCurrency || false,
-                isTime: item.isTime || false,
-                label: item.label,
-            };
+            summary[item.key] = 0;
         });
 
         activitiesToSubmit.forEach(activity => {
-            const key = activity.summaryKey;
-            if (summary[key]) {
-                summary[key].count += 1;
-                summary[key].points += activity.points;
-                // Special handling for sales_closed to populate its sales array
-                if (activity.type === "Sale Closed (Apps filled, premium collected)") {
-                    summary["sales_closed"].sales.push({
-                        api: activity.apiValue,
-                        cashCollected: activity.cashCollected,
-                        isOrphan: activity.isOrphanSale
-                    });
+            if (activity.summaryKey in summary) {
+                if (REPORT_SUMMARY_CATEGORIES.Sales.find(i => i.key === activity.summaryKey && i.isCurrency)) {
+                    summary[activity.summaryKey] += activity.apiValue || 0;
+                } else {
+                    summary[activity.summaryKey] += 1;
                 }
             }
         });
-
-        // Special calculations for combined or derived metrics
-        summary.prospecting_calls.count = (summary.prospecting_calls_old?.count || 0) + (summary.prospecting_calls_new?.count || 0);
-        summary.prospecting_calls.points = (summary.prospecting_calls_old?.points || 0) + (summary.prospecting_calls_new?.points || 0);
-
-        summary.appointments_cancelled.count = (summary.appointments_booked?.count || 0) - (summary.appointments_conducted?.count || 0);
-        summary.appointments_cancelled.points = (summary.appointments_booked?.points || 0) - (summary.appointments_conducted?.points || 0);
-
-        summary.closing_interviews_cancelled.count = (summary.closing_interviews_booked?.count || 0) - (summary.closing_interviews_conducted?.count || 0);
-        summary.closing_interviews_cancelled.points = (summary.closing_interviews_booked?.points || 0) - (summary.closing_interviews_conducted?.points || 0);
-
-        // Calculate total API and Cash Collected for the sales_closed summary item
-        // Ensure these calculations are based on the populated sales_closed.sales array
-        if (summary.sales_closed) {
-            const totalApi = summary.sales_closed.sales.reduce((acc, sale) => acc + (sale.api || 0), 0);
-            const totalCashCollected = summary.sales_closed.sales.reduce((acc, sale) => acc + (sale.cashCollected || 0), 0);
-            const totalSalesWithCash = summary.sales_closed.sales.filter(sale => (sale.cashCollected || 0) > 0).length;
-
-            // Assign to the appropriate summary keys
-            if (summary.api_cash_collected) {
-                summary.api_cash_collected.count = totalApi;
-                // Note: The original ClockOutModal uses 'points' for cashCollected here.
-                // Keeping it consistent, but logically 'count' for API and 'points' for cashCollected might be confusing.
-                // For parity, let's keep it as per ClockOutModal.
-                summary.api_cash_collected.points = totalCashCollected; 
-            }
-            if (summary.sales_with_cash) {
-                summary.sales_with_cash.count = totalSalesWithCash;
-            }
-        }
+        
+        summary.prospecting_calls = (summary.prospecting_calls_old || 0) + (summary.prospecting_calls_new || 0);
+        summary.appointments_cancelled = (summary.appointments_booked || 0) - (summary.appointments_conducted || 0);
+        summary.closing_interviews_cancelled = (summary.closing_interviews_booked || 0) - (summary.closing_interviews_conducted || 0);
 
         return summary;
     }, [activitiesToSubmit]);
 
-    // Calculate total points for summary display
     const summaryTotalPoints = useMemo(() => {
-        let points = 0;
-        for (const activity of activitiesToSubmit) {
-            points += activity.points;
-        }
-        return points;
+        return activitiesToSubmit.reduce((acc, activity) => acc + (activity.points || 0), 0);
     }, [activitiesToSubmit]);
 
     const displayReportPeriod = activitiesToSubmit.length > 0 ? activitiesToSubmit[0].reportPeriodDisplay : '';
-
 
     if (showSummary) {
         return (
@@ -263,7 +235,7 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
                                         <tr key={item.key}>
                                             <td className="p-3 text-gray-300">{item.label}</td>
                                             <td className="p-3 text-right font-bold text-white">
-                                                {item.isCurrency ? `$${(summarizedActivities[item.key]?.count || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : (summarizedActivities[item.key]?.count || 0)}
+                                                {item.isCurrency ? `$${(summarizedActivities[item.key] || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : (summarizedActivities[item.key] || 0)}
                                                 {item.isTime && ' hrs'}
                                             </td>
                                         </tr>
@@ -271,20 +243,6 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
                                 </tbody>
                             </table>
                         </div>
-                        {category === "Sales" && summarizedActivities.sales_closed?.sales.length > 0 && (
-                            <div className="bg-gray-700/50 rounded-lg mt-4">
-                                <h4 className="text-lg font-semibold p-3 border-b border-gray-600">Detailed Sales (Sale Closed)</h4>
-                                <div className="p-3">
-                                    {summarizedActivities.sales_closed.sales.map((sale, index) => (
-                                        <div key={index} className="bg-gray-800/50 p-2 rounded-md mb-2 last:mb-0">
-                                            <p>API: ${sale.api.toFixed(2)}</p>
-                                            <p>Cash Collected: ${sale.cashCollected.toFixed(2)}</p>
-                                            <p>Orphan Sale: {sale.isOrphan ? 'Yes' : 'No'}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
                     </div>
                 ))}
 
@@ -306,28 +264,20 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
             <Card>
                 <div className="p-4">
                     <div className="flex justify-around mb-4">
-                        <button onClick={() => handleReportTypeChange('Daily')} className={`py-2 px-4 rounded-md ${reportType === 'Daily' ? 'bg-amber-500' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                            Daily
-                        </button>
-                        <button onClick={() => handleReportTypeChange('Weekly')} className={`py-2 px-4 rounded-md ${reportType === 'Weekly' ? 'bg-amber-500' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                            Weekly
-                        </button>
-                        <button onClick={() => handleReportTypeChange('Monthly')} className={`py-2 px-4 rounded-md ${reportType === 'Monthly' ? 'bg-amber-500' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                            Monthly
-                        </button>
+                        <button onClick={() => handleReportTypeChange('Daily')} className={`py-2 px-4 rounded-md ${reportType === 'Daily' ? 'bg-amber-500' : 'bg-gray-700 hover:bg-gray-600'}`}>Daily</button>
+                        <button onClick={() => handleReportTypeChange('Weekly')} className={`py-2 px-4 rounded-md ${reportType === 'Weekly' ? 'bg-amber-500' : 'bg-gray-700 hover:bg-gray-600'}`}>Weekly</button>
+                        <button onClick={() => handleReportTypeChange('Monthly')} className={`py-2 px-4 rounded-md ${reportType === 'Monthly' ? 'bg-amber-500' : 'bg-gray-700 hover:bg-gray-600'}`}>Monthly</button>
                     </div>
                     <label htmlFor="report-date" className="block text-sm font-medium text-gray-400 mb-2 flex items-center"><Calendar className="mr-2" />Report Date</label>
-                    {(reportType === 'Daily' || reportType === 'Weekly') && (
-                        <input 
-                            type="date" 
-                            id="report-date" 
-                            value={reportDate} 
-                            onChange={e => setReportDate(e.target.value)} 
-                            className="w-full bg-gray-700 border-gray-600 rounded-md p-2"
-                        />
+                    
+                    {reportType === 'Daily' && (
+                        <input type="date" id="report-date" value={reportDate} max={maxDate} onChange={handleDateChange} className="w-full bg-gray-700 border-gray-600 rounded-md p-2"/>
+                    )}
+                    {reportType === 'Weekly' && (
+                         <input type="date" id="report-date" value={reportDate} max={maxDate} onChange={handleDateChange} className="w-full bg-gray-700 border-gray-600 rounded-md p-2"/>
                     )}
                     {reportType === 'Monthly' && (
-                        <input type="month" id="report-date" value={reportDate.slice(0, 7)} onChange={e => setReportDate(e.target.value + '-01')} className="w-full bg-gray-700 border-gray-600 rounded-md p-2"/>
+                        <input type="month" id="report-date" value={reportDate.slice(0, 7)} max={maxMonth} onChange={e => setReportDate(e.target.value + '-01')} className="w-full bg-gray-700 border-gray-600 rounded-md p-2"/>
                     )}
                 </div>
             </Card>
@@ -348,14 +298,7 @@ const ManualReportScreen = ({ currentUser, onLogActivity, addToast }) => {
                                 <div key={activity.name}>
                                     <div className="flex justify-between items-center">
                                         <label htmlFor={activity.name}>{activity.name}</label>
-                                        <input 
-                                            type="number" 
-                                            id={activity.name} 
-                                            min="0" 
-                                            value={activityCounts[activity.name] || ''} 
-                                            onChange={e => handleCountChange(activity.name, e.target.value)} 
-                                            className="w-24 bg-gray-700 p-1 rounded-md text-right"
-                                        />
+                                        <input type="number" id={activity.name} min="0" value={activityCounts[activity.name] || ''} onChange={e => handleCountChange(activity.name, e.target.value)} className="w-24 bg-gray-700 p-1 rounded-md text-right"/>
                                     </div>
                                     {activity.name === "Sale Closed (Apps filled, premium collected)" && (activityCounts[activity.name] || 0) > 0 && (
                                         <div className="pl-6 mt-2 space-y-2">

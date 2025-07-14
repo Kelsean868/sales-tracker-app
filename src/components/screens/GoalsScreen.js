@@ -3,6 +3,15 @@ import { Edit, Save, Trophy, Users } from 'lucide-react';
 import Card from '../ui/Card';
 import { ACTIVITY_POINTS_SYSTEM } from '../../constants';
 
+// Helper to get the Sunday of the week for a given date
+const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay(); // 0 for Sunday, 1 for Monday, etc.
+    const diff = d.getDate() - day; // Adjust to Sunday
+    return new Date(d.setDate(diff));
+};
+
+
 const GoalsScreen = ({ userId, currentUser, allUsers = [], activities = [] }) => {
     const managementRoles = ['super_admin', 'admin', 'branch_manager', 'unit_manager'];
     const isManagerView = currentUser && managementRoles.includes(currentUser.role);
@@ -101,10 +110,7 @@ const GoalTracker = ({ targetUserId, activities, isManagerViewing }) => {
                 break;
             case 'weekly':
             default:
-                const weeklyNow = new Date();
-                const day = weeklyNow.getDay();
-                const diff = weeklyNow.getDate() - day + (day === 0 ? -6 : 1);
-                startOfPeriod = new Date(weeklyNow.setDate(diff));
+                startOfPeriod = getStartOfWeek(now);
                 startOfPeriod.setHours(0, 0, 0, 0);
                 break;
         }
