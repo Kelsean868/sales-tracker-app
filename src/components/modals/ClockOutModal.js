@@ -182,45 +182,49 @@ const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
                 </div>
 
                 {Object.entries(SUMMARY_ITEMS).map(([category, items]) => (
-                    <div key={category} className="bg-gray-700/50 rounded-lg">
-                        <h4 className="text-lg font-semibold p-3 border-b border-gray-600">{category}</h4>
-                        <table className="w-full text-left">
-                            <tbody className="divide-y divide-gray-700">
-                                {items.map(item => (
-                                    <tr key={item.key}>
-                                        <td className="p-3 text-gray-300">{item.label}</td>
-                                        <td className="p-3 text-right font-bold text-white">
-                                            {item.isCurrency ? `$${(dailySummary[item.key] || 0).toLocaleString()}` : (dailySummary[item.key] || 0)}
-                                            {item.isTime && ' hrs'}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ))}
-                 <div className="bg-gray-700/50 rounded-lg">
-                    <h4 className="text-lg font-semibold p-3 border-b border-gray-600">Orphan Sales</h4>
-                    <div className="p-3">
-                        <label className="flex items-center">
-                            <input type="checkbox" checked={orphanSales.any} onChange={(e) => setOrphanSales({...orphanSales, any: e.target.checked})} className="h-5 w-5 rounded text-amber-500 bg-gray-600 border-gray-500 focus:ring-amber-500" />
-                            <span className="ml-2">Any sales from Orphans today?</span>
-                        </label>
-                        {orphanSales.any && (
-                            <div className="grid grid-cols-2 gap-4 mt-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-1">API Potential from Orphans</label>
-                                    <input type="number" value={orphanSales.apiPotential} onChange={(e) => setOrphanSales({...orphanSales, apiPotential: e.target.value})} className="w-full bg-gray-800 p-2 rounded-md" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-1">Applications from Orphans</label>
-                                    <input type="number" value={orphanSales.applications} onChange={(e) => setOrphanSales({...orphanSales, applications: e.target.value})} className="w-full bg-gray-800 p-2 rounded-md" />
+                    <div key={category}>
+                        <div className="bg-gray-700/50 rounded-lg">
+                            <h4 className="text-lg font-semibold p-3 border-b border-gray-600">{category}</h4>
+                            <table className="w-full text-left">
+                                <tbody className="divide-y divide-gray-700">
+                                    {items.map(item => (
+                                        <tr key={item.key}>
+                                            <td className="p-3 text-gray-300">{item.label}</td>
+                                            <td className="p-3 text-right font-bold text-white">
+                                                {item.isCurrency ? `$${(dailySummary[item.key] || 0).toLocaleString()}` : (dailySummary[item.key] || 0)}
+                                                {item.isTime && ' hrs'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        {category === "Sales" && (
+                            <div className="bg-gray-700/50 rounded-lg mt-4">
+                                <h4 className="text-lg font-semibold p-3 border-b border-gray-600">Orphan Sales</h4>
+                                <div className="p-3">
+                                    <label className="flex items-center">
+                                        <input type="checkbox" checked={orphanSales.any} onChange={(e) => setOrphanSales({...orphanSales, any: e.target.checked})} className="h-5 w-5 rounded text-amber-500 bg-gray-600 border-gray-500 focus:ring-amber-500" />
+                                        <span className="ml-2">Any sales from Orphans today?</span>
+                                    </label>
+                                    {orphanSales.any && (
+                                        <div className="grid grid-cols-2 gap-4 mt-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-400 mb-1">API Potential from Orphans</label>
+                                                <input type="number" value={orphanSales.apiPotential} onChange={(e) => setOrphanSales({...orphanSales, apiPotential: e.target.value})} className="w-full bg-gray-800 p-2 rounded-md" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-400 mb-1">Applications from Orphans</label>
+                                                <input type="number" value={orphanSales.applications} onChange={(e) => setOrphanSales({...orphanSales, applications: e.target.value})} className="w-full bg-gray-800 p-2 rounded-md" />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
                     </div>
-                </div>
-
+                ))}
+                
                 <div>
                     <label htmlFor="summaryNotes" className="block text-sm font-medium text-gray-300 mb-2 flex items-center">
                         <List size={16} className="mr-2" />
