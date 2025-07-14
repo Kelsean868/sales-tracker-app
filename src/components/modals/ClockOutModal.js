@@ -41,6 +41,8 @@ const SUMMARY_ITEMS = {
         { "label": "API Potential of new sales (no cash collected)", "key": "api_potential_no_cash" },
         { "label": "API of New sales (cash collected)", "key": "api_cash_collected", "isCurrency": true },
         { "label": "Sales made with cash collected", "key": "sales_with_cash" },
+        { "label": "Number of Applications", "key": "apps_submitted" },
+        { "label": "Number of New Clients", "key": "new_clients" },
     ],
     "New Names": [
         { "label": "Referrals", "key": "referrals_earned" },
@@ -50,6 +52,12 @@ const SUMMARY_ITEMS = {
         { "label": "Names from Online Prospecting", "key": "names_from_online_prospecting" },
         { "label": "Names from Social Media Posts", "key": "names_from_social_media" },
         { "label": "Names from Other", "key": "names_from_other" },
+    ],
+    "Servicing Activities": [
+        { "label": "Premium Arrears Collected", "key": "premiums_paid" },
+        { "label": "Reinstatements Completed", "key": "policies_reinstated" },
+        { "label": "Orphans Adopted", "key": "service_reviews_submitted" },
+        { "label": "Other", "key": "other_servicing_activities" },
     ]
 };
 
@@ -63,6 +71,11 @@ const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
         timeOnField: 0,
         timeInOffice: 0,
         expenses: 0,
+    });
+    const [orphanSales, setOrphanSales] = useState({
+        any: false,
+        apiPotential: 0,
+        applications: 0,
     });
 
     useEffect(() => {
@@ -122,7 +135,8 @@ const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
                 notes: planNotes,
                 activities: tomorrowPlan,
             },
-            ...timeAndExpense
+            ...timeAndExpense,
+            orphanSales
         };
         onClockOut(clockOutData);
     };
@@ -185,6 +199,27 @@ const ClockOutModal = ({ isOpen, onClose, onClockOut, user, activities }) => {
                         </table>
                     </div>
                 ))}
+                 <div className="bg-gray-700/50 rounded-lg">
+                    <h4 className="text-lg font-semibold p-3 border-b border-gray-600">Orphan Sales</h4>
+                    <div className="p-3">
+                        <label className="flex items-center">
+                            <input type="checkbox" checked={orphanSales.any} onChange={(e) => setOrphanSales({...orphanSales, any: e.target.checked})} className="h-5 w-5 rounded text-amber-500 bg-gray-600 border-gray-500 focus:ring-amber-500" />
+                            <span className="ml-2">Any sales from Orphans today?</span>
+                        </label>
+                        {orphanSales.any && (
+                            <div className="grid grid-cols-2 gap-4 mt-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-1">API Potential from Orphans</label>
+                                    <input type="number" value={orphanSales.apiPotential} onChange={(e) => setOrphanSales({...orphanSales, apiPotential: e.target.value})} className="w-full bg-gray-800 p-2 rounded-md" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-1">Applications from Orphans</label>
+                                    <input type="number" value={orphanSales.applications} onChange={(e) => setOrphanSales({...orphanSales, applications: e.target.value})} className="w-full bg-gray-800 p-2 rounded-md" />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
 
                 <div>
                     <label htmlFor="summaryNotes" className="block text-sm font-medium text-gray-300 mb-2 flex items-center">
