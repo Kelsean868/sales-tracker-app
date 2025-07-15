@@ -6,7 +6,9 @@ import {
     createUserWithEmailAndPassword, 
     signInWithEmailAndPassword,
     signOut,
-    getIdTokenResult
+    getIdTokenResult,
+    isSignInWithEmailLink,
+    signInWithEmailLink
 } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, collection, query, addDoc, serverTimestamp, setDoc, updateDoc, orderBy, limit, startAfter, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
@@ -140,6 +142,29 @@ const AppContent = () => {
     const { addToast } = useNotification();
     
     useEffect(() => {
+        // Handle Firebase email link sign-in
+        if (isSignInWithEmailLink(auth, window.location.href)) {
+            let email = window.localStorage.getItem('emailForSignIn');
+            if (!email) {
+                email = window.prompt('Please provide your email for confirmation');
+            }
+            if(email) {
+                signInWithEmailLink(auth, email, window.location.href)
+                    .then((result) => {
+                        window.localStorage.removeItem('emailForSignIn');
+                        // You can access the user's info here: result.user
+                        // The user is signed in.
+                        addToast('Successfully signed in!', 'success');
+                        // Clear the URL to remove the sign-in link parameters.
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    })
+                    .catch((error) => {
+                        console.error('Error signing in with email link:', error);
+                        addToast(`Error: ${error.message}`, 'error');
+                    });
+            }
+        }
+        
         const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser && !firebaseUser.isAnonymous) {
                 try {
@@ -165,7 +190,7 @@ const AppContent = () => {
             }
         });
         return () => unsubscribeAuth();
-    }, []);
+    }, [addToast]);
 
     const fetchMoreData = useCallback(async (collectionName) => {
         if (loadingMore) return;

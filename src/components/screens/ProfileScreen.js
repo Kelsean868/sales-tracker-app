@@ -3,7 +3,7 @@ import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase, LogOut, User, GitCompare, Palette } from 'lucide-react';
+import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase, LogOut, User, GitCompare, Palette, Thermometer, Calendar } from 'lucide-react';
 import { USER_ROLES } from '../../constants';
 import { themes } from '../../themes';
 
@@ -61,6 +61,8 @@ const ProfileScreen = ({
             upcomingFollowupPush: true,
         },
         defaultReportRange: 'weekly',
+        weekStartsOn: 'Sunday', 
+        temperatureUnit: 'Celsius',
         ...user?.settings,
     }), [user]);
 
@@ -277,6 +279,32 @@ const ProfileScreen = ({
                             Current Age
                         </button>
                     </div>
+                </div>
+                 <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center"><Calendar className="mr-2"/>First Day of the Week</label>
+                    <select
+                        name="weekStartsOn"
+                        value={settings.weekStartsOn}
+                        onChange={handleSettingsChange}
+                        disabled={!isEditing}
+                        className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500"
+                    >
+                        <option value="Sunday">Sunday</option>
+                        <option value="Monday">Monday</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center"><Thermometer className="mr-2"/>Temperature Unit</label>
+                    <select
+                        name="temperatureUnit"
+                        value={settings.temperatureUnit}
+                        onChange={handleSettingsChange}
+                        disabled={!isEditing}
+                        className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500"
+                    >
+                        <option value="Celsius">Celsius</option>
+                        <option value="Fahrenheit">Fahrenheit</option>
+                    </select>
                 </div>
             </div>
             <div className="space-y-4">

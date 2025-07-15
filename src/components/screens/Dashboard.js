@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Users, Shield, DollarSign, CheckCircle, Activity, Clock, TrendingUp, Target } from 'lucide-react';
 import Card from '../ui/Card';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { LEAD_STAGES } from '../../constants';
 
 const StatCard = ({ icon, label, value, color }) => (
     <Card>
@@ -42,19 +43,22 @@ const RecentActivityItem = ({ activity }) => {
 
 const SalesFunnelChart = ({ leads = [] }) => {
     const funnelData = useMemo(() => {
-        const statuses = ['New', 'Contacted', 'Qualified', 'Proposal Sent', 'Negotiation', 'Closed Won'];
-        const counts = statuses.reduce((acc, status) => {
-            acc[status] = 0;
+        const stages = Object.values(LEAD_STAGES);
+        const counts = stages.reduce((acc, stage) => {
+            acc[stage] = 0;
             return acc;
         }, {});
+
         leads.forEach(lead => {
-            if (lead.status && counts[lead.status] !== undefined) {
-                counts[lead.status]++;
+            const stage = lead.stage || LEAD_STAGES.NEW;
+            if (counts[stage] !== undefined) {
+                counts[stage]++;
             }
         });
-        return statuses.map(status => ({
-            name: status,
-            count: counts[status]
+        
+        return stages.map(stage => ({
+            name: stage,
+            count: counts[stage]
         }));
     }, [leads]);
 
