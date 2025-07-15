@@ -26,9 +26,20 @@ service cloud.firestore {
 
     function canManage(docData) {
       return isSuperAdmin() || isAdmin() || 
-             (request.auth.token.role == 'regional_manager' && request.auth.token.regionId == docData.regionId) ||
-             (request.auth.token.role == 'branch_manager' && request.auth.token.branchId == docData.branchId) ||
-             (request.auth.token.role == 'unit_manager' && request.auth.token.unitId == docData.unitId);
+             (request.auth.token.role == 'regional_manager' && 
+              request.auth.token.regionId == docData.regionId) ||
+             (request.auth.token.role == 'branch_manager' && 
+              request.auth.token.branchId == docData.branchId) ||
+             (request.auth.token.role == 'unit_manager' && 
+              request.auth.token.unitId == docData.unitId);
+    }
+
+    function validateOrgIds(data) {
+      return data.userId == request.auth.uid &&
+             (data.regionId == null || data.regionId == request.auth.token.regionId) &&
+             (data.branchId == null || data.branchId == request.auth.token.branchId) &&
+             (data.unitId == null || data.unitId == request.auth.token.unitId) &&
+             (data.teamId == null || data.teamId == request.auth.token.teamId);
     }
     
     // --- Collection Rules ---
@@ -36,43 +47,42 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn();
       allow update: if request.auth.uid == userId || isSuperAdmin() || isAdmin();
-      // Only admins should create users through the backend function
       allow create: if isSuperAdmin() || isAdmin();
     }
 
     match /activities/{activityId} {
       allow read: if isOwner(resource.data) || canManage(resource.data);
-      allow create: if isOwner(request.resource.data);
+      allow create: if isOwner(request.resource.data) && validateOrgIds(request.resource.data);
       allow update, delete: if isOwner(resource.data);
     }
 
     match /leads/{leadId} {
       allow read: if isOwner(resource.data) || canManage(resource.data);
-      allow create: if isOwner(request.resource.data);
+      allow create: if isOwner(request.resource.data) && validateOrgIds(request.resource.data);
       allow update, delete: if isOwner(resource.data);
     }
 
     match /clients/{clientId} {
       allow read: if isOwner(resource.data) || canManage(resource.data);
-      allow create: if isOwner(request.resource.data);
+      allow create: if isOwner(request.resource.data) && validateOrgIds(request.resource.data);
       allow update, delete: if isOwner(resource.data);
     }
 
     match /contacts/{contactId} {
       allow read: if isOwner(resource.data) || canManage(resource.data);
-      allow create: if isOwner(request.resource.data);
+      allow create: if isOwner(request.resource.data) && validateOrgIds(request.resource.data);
       allow update, delete: if isOwner(resource.data);
     }
 
     match /policies/{policyId} {
       allow read: if isOwner(resource.data) || canManage(resource.data);
-      allow create: if isOwner(request.resource.data);
+      allow create: if isOwner(request.resource.data) && validateOrgIds(request.resource.data);
       allow update, delete: if isOwner(resource.data);
     }
 
     match /goals/{goalId} {
       allow read: if isOwner(resource.data) || canManage(resource.data);
-      allow create: if isOwner(request.resource.data);
+      allow create: if isOwner(request.resource.data) && validateOrgIds(request.resource.data);
       allow update, delete: if isOwner(resource.data);
     }
     
@@ -83,10 +93,22 @@ service cloud.firestore {
     }
 
     // Organizational structure documents
-    match /regions/{docId} { allow read: if isSignedIn(); allow write: if isSuperAdmin() || isAdmin(); }
-    match /branchs/{docId} { allow read: if isSignedIn(); allow write: if isSuperAdmin() || isAdmin() || isManager(); }
-    match /units/{docId} { allow read: if isSignedIn(); allow write: if isSuperAdmin() || isAdmin() || isManager(); }
-    match /teams/{docId} { allow read: if isSignedIn(); allow write: if isSuperAdmin() || isAdmin() || isManager(); }
+    match /regions/{docId} { 
+      allow read: if isSignedIn(); 
+      allow write: if isSuperAdmin() || isAdmin(); 
+    }
+    match /branchs/{docId} { 
+      allow read: if isSignedIn(); 
+      allow write: if isSuperAdmin() || isAdmin() || isManager(); 
+    }
+    match /units/{docId} { 
+      allow read: if isSignedIn(); 
+      allow write: if isSuperAdmin() || isAdmin() || isManager(); 
+    }
+    match /teams/{docId} { 
+      allow read: if isSignedIn(); 
+      allow write: if isSuperAdmin() || isAdmin() || isManager(); 
+    }
 
     match /workHistory/{docId} {
       allow read, create: if isOwner(request.resource.data);

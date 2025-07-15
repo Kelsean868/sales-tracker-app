@@ -3,7 +3,7 @@ import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase, LogOut, User, GitCompare, Palette, Thermometer, Calendar } from 'lucide-react';
+import { Edit, Save, X, UploadCloud, Clock, ShieldCheck, PlusCircle, Building, Users, Briefcase, LogOut, User, GitCompare, Palette, Thermometer, Calendar, ExternalLink, FileText, Shield, HelpCircle } from 'lucide-react';
 import { USER_ROLES } from '../../constants';
 import { themes } from '../../themes';
 
@@ -22,7 +22,8 @@ const ProfileScreen = ({
     teams,
     units,
     branches,
-    regions
+    regions,
+    onNavigateToScreen // Fixed: Added this prop
 }) => {
     const [activeTab, setActiveTab] = useState('profile');
     const [isEditing, setIsEditing] = useState(false);
@@ -41,8 +42,8 @@ const ProfileScreen = ({
         USER_ROLES.REGIONAL_MANAGER,
         USER_ROLES.BRANCH_MANAGER,
         USER_ROLES.UNIT_MANAGER
-      ];
-      const canManage = user && managementRoles.includes(user.role);
+    ];
+    const canManage = user && managementRoles.includes(user.role);
 
     const initialProfileState = useMemo(() => ({
         name: user?.name || '',
@@ -73,7 +74,6 @@ const ProfileScreen = ({
             setIsEditing(false);
         }
     }, [isOpen, initialProfileState, initialSettingsState]);
-
 
     const handleProfileChange = (e) => {
         const { name, value } = e.target;
@@ -196,52 +196,158 @@ const ProfileScreen = ({
         }
     };
 
+    // Fixed: Handle navigation link clicks
+    const handleNavigationClick = (screen) => {
+        onClose(); // Close the profile modal
+        if (onNavigateToScreen) {
+            onNavigateToScreen(screen);
+        } else {
+            addToast('Navigation feature coming soon!', 'info');
+        }
+    };
+
     if (!isOpen) return null;
     
     const InfoField = ({ label, value, name, isEditing, onChange, type = 'text' }) => (
-        <div>
-            <label className="block text-sm font-medium text-gray-400">{label}</label>
+        <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">{label}</label>
             {isEditing ? (
-                <input type={type} name={name} value={value || ''} onChange={onChange} className="w-full mt-1 bg-gray-700 text-white border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500" />
+                <input
+                    type={type}
+                    name={name}
+                    value={value}
+                    onChange={onChange}
+                    className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:ring-amber-500 focus:border-amber-500"
+                />
             ) : (
-                <p className="text-white text-lg font-semibold">{value || 'N/A'}</p>
+                <div className="p-2 bg-gray-800 text-white rounded-md min-h-[40px] flex items-center">
+                    {value || 'N/A'}
+                </div>
             )}
         </div>
     );
 
     const renderProfileTab = () => (
         <div className="space-y-6">
-            <div className="flex flex-col items-center space-y-4">
+            <div className="flex items-center space-x-4 mb-6">
                 <div className="relative">
-                    <img src={user?.photoURL || `https://placehold.co/128x128/374151/ECF0F1?text=${user?.name ? user.name.charAt(0) : 'A'}`} alt="Profile" className="w-32 h-32 rounded-full object-cover border-4 border-gray-600" />
-                    <button onClick={() => fileInputRef.current.click()} className="absolute bottom-0 right-0 bg-blue-600 p-2 rounded-full hover:bg-blue-700 transition-colors">
-                        {isUploading ? <Clock className="w-5 h-5 animate-spin"/> : <UploadCloud className="w-5 h-5"/>}
+                    <div className="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">
+                        {user?.photoURL ? (
+                            <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                            <User className="w-8 h-8 text-gray-400" />
+                        )}
+                    </div>
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="absolute -bottom-1 -right-1 bg-amber-500 text-white p-1 rounded-full hover:bg-amber-600 transition-colors"
+                        disabled={isUploading}
+                    >
+                        {isUploading ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        ) : (
+                            <UploadCloud className="w-4 h-4" />
+                        )}
                     </button>
-                    <input type="file" ref={fileInputRef} onChange={handlePictureUpload} accept="image/*" className="hidden" />
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePictureUpload}
+                        className="hidden"
+                    />
                 </div>
-                 <h2 className="text-2xl font-bold">{isEditing ? profileData.name : user?.name}</h2>
-                 <p className="text-gray-400 capitalize">{(user?.role || 'sales_person').replace(/_/g, ' ').toLowerCase()}</p>
+                <div>
+                    <h3 className="text-xl font-semibold text-white">
+                        {isEditing ? profileData.name : user?.name}
+                    </h3>
+                    <p className="text-gray-400 capitalize">
+                        {(user?.role || 'sales_person').replace(/_/g, ' ').toLowerCase()}
+                    </p>
+                </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InfoField label="Full Name" name="name" value={profileData.name} isEditing={isEditing} onChange={handleProfileChange} />
-                <InfoField label="Contact Number" name="phone" value={profileData.phone} isEditing={isEditing} onChange={handleProfileChange} type="tel" />
-                <InfoField label="Company" name="company" value={profileData.company} isEditing={isEditing} onChange={handleProfileChange} />
-                <InfoField label="Company Address" name="companyAddress" value={profileData.companyAddress} isEditing={isEditing} onChange={handleProfileChange} />
-                <InfoField label="Branch / Agency" name="branch" value={profileData.branch} isEditing={isEditing} onChange={handleProfileChange} />
+
+            <InfoField
+                label="Full Name"
+                value={profileData.name}
+                name="name"
+                isEditing={isEditing}
+                onChange={handleProfileChange}
+            />
+            <InfoField
+                label="Phone"
+                value={profileData.phone}
+                name="phone"
+                isEditing={isEditing}
+                onChange={handleProfileChange}
+            />
+            <InfoField
+                label="Company"
+                value={profileData.company}
+                name="company"
+                isEditing={isEditing}
+                onChange={handleProfileChange}
+            />
+            <InfoField
+                label="Company Address"
+                value={profileData.companyAddress}
+                name="companyAddress"
+                isEditing={isEditing}
+                onChange={handleProfileChange}
+            />
+            <InfoField
+                label="Branch"
+                value={profileData.branch}
+                name="branch"
+                isEditing={isEditing}
+                onChange={handleProfileChange}
+            />
+            
+            <div className="flex justify-end space-x-2">
+                {isEditing ? (
+                    <>
+                        <button
+                            onClick={() => setIsEditing(false)}
+                            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors flex items-center space-x-2"
+                        >
+                            <X className="w-4 h-4" />
+                            <span>Cancel</span>
+                        </button>
+                        <button
+                            onClick={handleSaveProfile}
+                            className="px-4 py-2 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors flex items-center space-x-2"
+                        >
+                            <Save className="w-4 h-4" />
+                            <span>Save</span>
+                        </button>
+                    </>
+                ) : (
+                    <button
+                        onClick={() => setIsEditing(true)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                    >
+                        <Edit className="w-4 h-4" />
+                        <span>Edit</span>
+                    </button>
+                )}
             </div>
         </div>
     );
     
     const renderAccountTab = () => (
-        <div className="space-y-6">
-             <div>
-                <label className="block text-sm font-medium text-gray-400">Email Address</label>
-                <p className="text-white text-lg font-semibold bg-gray-700/50 p-2 rounded-md">{user?.email}</p>
+        <div className="space-y-4">
+            <div className="mb-6">
+                <label className="block text-sm font-medium mb-2">Email Address</label>
+                <div className="p-2 bg-gray-800 text-white rounded-md">{user?.email}</div>
             </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Password</label>
-                <button onClick={handlePasswordReset} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md">
-                    Send Password Reset Email
+            
+            <div className="mb-6">
+                <label className="block text-sm font-medium mb-2">Password</label>
+                <button
+                    onClick={handlePasswordReset}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                    Reset Password
                 </button>
             </div>
         </div>
@@ -249,86 +355,103 @@ const ProfileScreen = ({
 
     const renderSettingsTab = () => (
         <div className="space-y-6">
-            <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 flex items-center"><Palette className="mr-2" /> Appearance</h3>
-                 <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Theme</label>
-                    <div className="grid grid-cols-3 gap-4">
+            <div>
+                <h3 className="text-lg font-semibold mb-4">Appearance</h3>
+                
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Theme</label>
+                    <div className="grid grid-cols-2 gap-2">
                         {Object.entries(themes).map(([key, theme]) => (
-                             <button
+                            <button
                                 key={key}
                                 onClick={() => handleThemeChange(key)}
-                                className={`p-4 rounded-lg border-2 ${settings.theme === key ? 'border-amber-500' : 'border-gray-600'} transition-all`}
+                                className={`p-3 rounded-md border transition-colors ${
+                                    settings.theme === key
+                                        ? 'border-amber-500 bg-amber-500/10'
+                                        : 'border-gray-600 hover:border-gray-500'
+                                }`}
                             >
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="font-semibold">{theme.name}</span>
-                                    {settings.theme === key && <ShieldCheck className="w-5 h-5 text-amber-500" />}
-                                </div>
-                                <div className="flex gap-1">
-                                    <div className="w-1/4 h-8 rounded" style={{ backgroundColor: theme.colors['--background'] }}></div>
-                                    <div className="w-1/4 h-8 rounded" style={{ backgroundColor: theme.colors['--primary'] }}></div>
-                                    <div className="w-1/4 h-8 rounded" style={{ backgroundColor: theme.colors['--secondary'] }}></div>
-                                    <div className="w-1/4 h-8 rounded" style={{ backgroundColor: theme.colors['--accent'] }}></div>
+                                <div className="flex items-center space-x-2">
+                                    <div
+                                        className="w-4 h-4 rounded-full"
+                                        style={{ backgroundColor: theme.colors['--primary'] }}
+                                    ></div>
+                                    <span className="text-sm capitalize">{key}</span>
                                 </div>
                             </button>
                         ))}
                     </div>
                 </div>
             </div>
-
-            <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-b border-gray-700 pb-2">Preferences</h3>
-                <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Age Display</label>
-                    <div className="flex items-center space-x-2 bg-gray-700 p-1 rounded-lg">
-                        <button 
-                            onClick={() => handleSettingsChange({target: {name: 'ageCalculation', value: 'ageNextBirthday'}})}
-                            className={`w-1/2 p-2 rounded-md text-sm font-semibold transition-colors ${settings.ageCalculation === 'ageNextBirthday' ? 'bg-amber-500 text-gray-900' : 'text-white'}`}
-                        >
-                            Age Next Birthday
-                        </button>
-                         <button 
-                            onClick={() => handleSettingsChange({target: {name: 'ageCalculation', value: 'currentAge'}})}
-                            className={`w-1/2 p-2 rounded-md text-sm font-semibold transition-colors ${settings.ageCalculation === 'currentAge' ? 'bg-amber-500 text-gray-900' : 'text-white'}`}
-                        >
-                            Current Age
-                        </button>
-                    </div>
+            
+            <div>
+                <h3 className="text-lg font-semibold mb-4">Preferences</h3>
+                
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Age Display</label>
+                    <select
+                        name="ageCalculation"
+                        value={settings.ageCalculation}
+                        onChange={handleSettingsChange}
+                        className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:ring-amber-500 focus:border-amber-500"
+                    >
+                        <option value="ageNextBirthday">Age Next Birthday</option>
+                        <option value="ageNow">Current Age</option>
+                    </select>
                 </div>
-                 <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center"><Calendar className="mr-2"/>First Day of the Week</label>
+                
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">First Day of the Week</label>
                     <select
                         name="weekStartsOn"
                         value={settings.weekStartsOn}
                         onChange={handleSettingsChange}
-                        className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500"
+                        className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:ring-amber-500 focus:border-amber-500"
                     >
                         <option value="Sunday">Sunday</option>
                         <option value="Monday">Monday</option>
                     </select>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center"><Thermometer className="mr-2"/>Temperature Unit</label>
+                
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Temperature Unit</label>
                     <select
                         name="temperatureUnit"
                         value={settings.temperatureUnit}
                         onChange={handleSettingsChange}
-                        className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500"
+                        className="w-full p-2 bg-gray-700 text-white border border-gray-600 rounded-md focus:ring-amber-500 focus:border-amber-500"
                     >
                         <option value="Celsius">Celsius</option>
                         <option value="Fahrenheit">Fahrenheit</option>
                     </select>
                 </div>
             </div>
-            <div className="space-y-4">
-                 <h3 className="text-lg font-semibold border-b border-gray-700 pb-2">Notifications</h3>
-                 <div className="flex items-center justify-between">
-                    <label htmlFor="dailySummaryEmail" className="text-white">Email me a daily summary report</label>
-                    <input type="checkbox" id="dailySummaryEmail" name="notifications.dailySummaryEmail" checked={settings.notifications?.dailySummaryEmail || false} onChange={handleSettingsChange} className="h-6 w-6 rounded text-amber-500 bg-gray-700 border-gray-600 focus:ring-amber-500"/>
-                </div>
-                <div className="flex items-center justify-between">
-                    <label htmlFor="upcomingFollowupPush" className="text-white">Push notifications for upcoming follow-ups</label>
-                    <input type="checkbox" id="upcomingFollowupPush" name="notifications.upcomingFollowupPush" checked={settings.notifications?.upcomingFollowupPush || false} onChange={handleSettingsChange} className="h-6 w-6 rounded text-amber-500 bg-gray-700 border-gray-600 focus:ring-amber-500"/>
+            
+            <div>
+                <h3 className="text-lg font-semibold mb-4">Notifications</h3>
+                
+                <div className="space-y-3">
+                    <label className="flex items-center space-x-3">
+                        <input
+                            type="checkbox"
+                            name="notifications.dailySummaryEmail"
+                            checked={settings.notifications?.dailySummaryEmail}
+                            onChange={handleSettingsChange}
+                            className="w-4 h-4 text-amber-500 bg-gray-700 border-gray-600 rounded focus:ring-amber-500"
+                        />
+                        <span>Email me a daily summary report</span>
+                    </label>
+                    
+                    <label className="flex items-center space-x-3">
+                        <input
+                            type="checkbox"
+                            name="notifications.upcomingFollowupPush"
+                            checked={settings.notifications?.upcomingFollowupPush}
+                            onChange={handleSettingsChange}
+                            className="w-4 h-4 text-amber-500 bg-gray-700 border-gray-600 rounded focus:ring-amber-500"
+                        />
+                        <span>Push notifications for upcoming follow-ups</span>
+                    </label>
                 </div>
             </div>
         </div>
@@ -336,164 +459,228 @@ const ProfileScreen = ({
     
     const renderManagementTab = () => (
         <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-semibold mb-4 flex items-center">
-              <Users className="mr-2" /> User Management
-            </h3>
-            <button
-              onClick={onOpenAddUserModal}
-              className="mb-4 bg-blue-600 text-white px-4 py-2 rounded-md flex items-center"
-            >
-              <PlusCircle className="mr-2 w-4 h-4" />
-              Add User
-            </button>
+            <div>
+                <h3 className="text-lg font-semibold mb-4">User Management</h3>
+                
+                <div className="mb-4">
+                    <button
+                        onClick={onOpenAddUserModal}
+                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center space-x-2"
+                    >
+                        <PlusCircle className="w-4 h-4" />
+                        <span>Add User</span>
+                    </button>
+                </div>
+                
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-gray-300">
+                        <thead className="text-xs text-gray-400 uppercase bg-gray-700">
+                            <tr>
+                                <th className="px-6 py-3">Name</th>
+                                <th className="px-6 py-3">Email</th>
+                                <th className="px-6 py-3">Role</th>
+                                <th className="px-6 py-3">Organization</th>
+                                <th className="px-6 py-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {allUsers.map(u => (
+                                <tr key={u.uid} className="bg-gray-800 border-b border-gray-700">
+                                    <td className="px-6 py-4 font-medium text-white">{u.name}</td>
+                                    <td className="px-6 py-4">{u.email}</td>
+                                    <td className="px-6 py-4 capitalize">{(u.role || 'sales_person').replace(/_/g, ' ').toLowerCase()}</td>
+                                    <td className="px-6 py-4">
+                                        <div className="text-xs space-y-1">
+                                            {u.regionId && <div>Region: {u.regionId}</div>}
+                                            {u.branchId && <div>Branch: {u.branchId}</div>}
+                                            {u.unitId && <div>Unit: {u.unitId}</div>}
+                                            {u.teamId && <div>Team: {u.teamId}</div>}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <button
+                                            onClick={() => onOpenEditUserModal(u)}
+                                            className="text-blue-600 hover:text-blue-500 mr-2"
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             
-            <div className="bg-gray-800 rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-700">
-                  <tr>
-                    <th className="text-left p-3">Name</th>
-                    <th className="text-left p-3">Email</th>
-                    <th className="text-left p-3">Role</th>
-                    <th className="text-left p-3">Organization</th>
-                    <th className="text-left p-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {allUsers.map(u => (
-                    <tr key={u.id} className="hover:bg-gray-700">
-                      <td className="p-3">{u.name}</td>
-                      <td className="p-3">{u.email}</td>
-                      <td className="p-3">{(u.role || 'sales_person').replace(/_/g, ' ').toLowerCase()}</td>
-                      <td className="p-3">
-                        <div className="text-sm">
-                          {u.regionId && `Region: ${u.regionId}`}
-                          {u.branchId && `Branch: ${u.branchId}`}
-                          {u.unitId && `Unit: ${u.unitId}`}
-                          {u.teamId && `Team: ${u.teamId}`}
+            <div>
+                <h3 className="text-lg font-semibold mb-4">Organizational Units</h3>
+                
+                <form onSubmit={handleCreateOrgUnit} className="mb-6 p-4 bg-gray-700 rounded-md">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-2">New Unit Name</label>
+                            <input
+                                type="text"
+                                value={newOrgUnit.name}
+                                onChange={(e) => setNewOrgUnit(prev => ({...prev, name: e.target.value}))}
+                                placeholder="e.g., North Star Unit"
+                                className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2"
+                            />
                         </div>
-                      </td>
-                      <td className="p-3">
-                        <button
-                          onClick={() => onOpenEditUserModal(u)}
-                          className="text-blue-400 hover:text-blue-300 mr-2"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-      
-          <div>
-            <h3 className="text-lg font-semibold mb-4 flex items-center">
-              <Building className="mr-2" /> Organizational Units
-            </h3>
-            
-            <form onSubmit={handleCreateOrgUnit} className="mb-6 bg-gray-800 p-4 rounded-lg">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">New Unit Name</label>
-                  <input
-                    type="text"
-                    value={newOrgUnit.name}
-                    onChange={(e) => setNewOrgUnit(prev => ({...prev, name: e.target.value}))}
-                    placeholder="e.g., North Star Unit"
-                    className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2"
-                  />
-                </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Type</label>
+                            <select
+                                value={newOrgUnit.type}
+                                onChange={(e) => setNewOrgUnit(prev => ({...prev, type: e.target.value}))}
+                                className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2"
+                            >
+                                <option value="">Select Type</option>
+                                <option value="region">Region</option>
+                                <option value="branch">Branch</option>
+                                <option value="unit">Unit</option>
+                                <option value="team">Team</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button
+                        type="submit"
+                        className="mt-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center space-x-2"
+                    >
+                        <PlusCircle className="w-4 h-4" />
+                        <span>Create</span>
+                    </button>
+                </form>
                 
-                <div>
-                  <label className="block text-sm font-medium mb-1">Type</label>
-                  <select
-                    value={newOrgUnit.type}
-                    onChange={(e) => setNewOrgUnit(prev => ({...prev, type: e.target.value}))}
-                    className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2"
-                  >
-                    <option value="">Select Type</option>
-                    <option value="region">Region</option>
-                    <option value="branch">Branch</option>
-                    <option value="unit">Unit</option>
-                    <option value="team">Team</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                    <OrgUnitList title="Regions" items={regions} icon={<Building className="w-4 h-4" />} />
+                    <OrgUnitList title="Branches" items={branches} icon={<GitCompare className="w-4 h-4" />} />
+                    <OrgUnitList title="Units" items={units} icon={<Users className="w-4 h-4" />} />
+                    <OrgUnitList title="Teams" items={teams} icon={<Briefcase className="w-4 h-4" />} />
                 </div>
-                
-                <div className="flex items-end">
-                  <button
-                    type="submit"
-                    className="bg-green-600 text-white px-4 py-2 rounded-md flex items-center"
-                  >
-                    <PlusCircle className="mr-2 w-4 h-4" />
-                    Create
-                  </button>
-                </div>
-              </div>
-            </form>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <OrgUnitList title="Regions" items={regions} icon={<Building className="w-4 h-4" />} />
-              <OrgUnitList title="Branches" items={branches} icon={<Building className="w-4 h-4" />} />
-              <OrgUnitList title="Units" items={units} icon={<Briefcase className="w-4 h-4" />} />
-              <OrgUnitList title="Teams" items={teams} icon={<Users className="w-4 h-4" />} />
             </div>
-          </div>
         </div>
-      );
+    );
 
     const OrgUnitList = ({ title, items, icon }) => (
-        <div className="bg-gray-900/50 p-4 rounded-lg">
-            <h3 className="text-lg font-semibold mb-2 flex items-center">{icon} {title}</h3>
-            <ul className="space-y-2 max-h-48 overflow-y-auto">
+        <div className="bg-gray-800 p-4 rounded-md">
+            <h4 className="font-semibold mb-2 flex items-center space-x-2">
+                {icon}
+                <span>{title}</span>
+            </h4>
+            <ul className="space-y-1">
                 {items.map(item => (
-                    <li key={item.id} className="bg-gray-700/50 p-2 rounded-md">{item.name}</li>
+                    <li key={item.id} className="text-sm text-gray-400">
+                        • {item.name}
+                    </li>
                 ))}
             </ul>
         </div>
     );
 
     return (
-        <div className={`fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex justify-center items-center p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={onClose}>
-            <div className="w-full max-w-4xl bg-gray-800 rounded-xl shadow-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <header className="flex-shrink-0 flex justify-between items-center p-4 border-b border-gray-700">
-                    <h1 className="text-2xl font-bold">Profile & Settings</h1>
-                    <div className="flex items-center gap-4">
-                        {activeTab === 'profile' && (
-                            isEditing ? (
-                                <button onClick={handleSaveProfile} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md flex items-center">
-                                    <Save className="w-5 h-5 mr-2"/> Save Profile
-                                </button>
-                            ) : (
-                                <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center">
-                                    <Edit className="w-5 h-5 mr-2"/> Edit Profile
-                                </button>
-                            )
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-900 text-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center p-6 border-b border-gray-700">
+                    <h2 className="text-2xl font-bold">Profile & Settings</h2>
+                    <button
+                        onClick={onClose}
+                        className="text-gray-400 hover:text-white transition-colors"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+                
+                <div className="flex">
+                    <div className="w-1/4 bg-gray-800 p-4 space-y-2">
+                        <button
+                            onClick={() => setActiveTab('profile')}
+                            className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center space-x-2 ${
+                                activeTab === 'profile' ? 'bg-amber-500 text-white' : 'text-gray-300 hover:bg-gray-700'
+                            }`}
+                        >
+                            <User className="w-4 h-4" />
+                            <span>Profile</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('account')}
+                            className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center space-x-2 ${
+                                activeTab === 'account' ? 'bg-amber-500 text-white' : 'text-gray-300 hover:bg-gray-700'
+                            }`}
+                        >
+                            <ShieldCheck className="w-4 h-4" />
+                            <span>Account</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('settings')}
+                            className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center space-x-2 ${
+                                activeTab === 'settings' ? 'bg-amber-500 text-white' : 'text-gray-300 hover:bg-gray-700'
+                            }`}
+                        >
+                            <Palette className="w-4 h-4" />
+                            <span>Settings</span>
+                        </button>
+                        {canManage && (
+                            <button
+                                onClick={() => setActiveTab('management')}
+                                className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center space-x-2 ${
+                                    activeTab === 'management' ? 'bg-amber-500 text-white' : 'text-gray-300 hover:bg-gray-700'
+                                }`}
+                            >
+                                <Users className="w-4 h-4" />
+                                <span>Management</span>
+                            </button>
                         )}
-                        <button onClick={onClose} className="text-gray-400 hover:text-white"><X className="w-6 h-6"/></button>
-                    </div>
-                </header>
-                <div className="flex-grow flex overflow-hidden">
-                    <nav className="w-1/4 border-r border-gray-700 p-4 flex flex-col">
-                        <ul className="space-y-2 flex-grow">
-                            <li><button onClick={() => setActiveTab('profile')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'profile' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><User className="w-5 h-5 mr-2"/>Profile</button></li>
-                            <li><button onClick={() => setActiveTab('account')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'account' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><ShieldCheck className="w-5 h-5 mr-2"/>Account</button></li>
-                            <li><button onClick={() => setActiveTab('settings')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'settings' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><GitCompare className="w-5 h-5 mr-2"/>Settings</button></li>
-                            {canManage && <li><button onClick={() => setActiveTab('management')} className={`w-full text-left p-2 rounded-md flex items-center ${activeTab === 'management' ? 'bg-amber-500 text-gray-900 font-bold' : 'hover:bg-gray-700'}`}><Briefcase className="w-5 h-5 mr-2"/>Management</button></li>}
-                        </ul>
-                        <div>
-                            <button onClick={onLogout} className="w-full mt-4 text-left p-2 rounded-md flex items-center text-red-400 hover:bg-red-500/20">
-                                <LogOut className="w-5 h-5 mr-2"/> Logout
+                        
+                        {/* Fixed: Links Section with proper navigation */}
+                        <div className="pt-4 border-t border-gray-700">
+                            <h5 className="text-xs font-semibold text-gray-400 mb-2 uppercase">Links</h5>
+                            <button
+                                onClick={() => handleNavigationClick('COMPANY_OVERVIEW')}
+                                className="w-full text-left px-3 py-2 rounded-md transition-colors flex items-center space-x-2 text-gray-300 hover:bg-gray-700"
+                            >
+                                <Building className="w-4 h-4" />
+                                <span>Company Overview</span>
+                            </button>
+                            <button
+                                onClick={() => handleNavigationClick('PRIVACY_POLICY')}
+                                className="w-full text-left px-3 py-2 rounded-md transition-colors flex items-center space-x-2 text-gray-300 hover:bg-gray-700"
+                            >
+                                <Shield className="w-4 h-4" />
+                                <span>Privacy Policy</span>
+                            </button>
+                            <button
+                                onClick={() => handleNavigationClick('TERMS_OF_SERVICE')}
+                                className="w-full text-left px-3 py-2 rounded-md transition-colors flex items-center space-x-2 text-gray-300 hover:bg-gray-700"
+                            >
+                                <FileText className="w-4 h-4" />
+                                <span>Terms of Service</span>
+                            </button>
+                            <button
+                                onClick={() => handleNavigationClick('HELP_SUPPORT')}
+                                className="w-full text-left px-3 py-2 rounded-md transition-colors flex items-center space-x-2 text-gray-300 hover:bg-gray-700"
+                            >
+                                <HelpCircle className="w-4 h-4" />
+                                <span>Help & Support</span>
                             </button>
                         </div>
-                    </nav>
-                    <main className="w-3/4 p-6 overflow-y-auto">
+                        
+                        <div className="pt-4 border-t border-gray-700">
+                            <button
+                                onClick={onLogout}
+                                className="w-full text-left px-3 py-2 rounded-md transition-colors flex items-center space-x-2 text-red-400 hover:bg-red-600 hover:text-white"
+                            >
+                                <LogOut className="w-4 h-4" />
+                                <span>Logout</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="flex-1 p-6 overflow-y-auto">
                         {activeTab === 'profile' && renderProfileTab()}
                         {activeTab === 'account' && renderAccountTab()}
                         {activeTab === 'settings' && renderSettingsTab()}
                         {activeTab === 'management' && canManage && renderManagementTab()}
-                    </main>
+                    </div>
                 </div>
             </div>
         </div>

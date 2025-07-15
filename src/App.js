@@ -28,6 +28,10 @@ import ReportsScreen from './components/screens/ReportsScreen';
 import GoalsScreen from './components/screens/GoalsScreen';
 import ProfileScreen from './components/screens/ProfileScreen';
 import ManualReportScreen from './components/screens/ManualReportScreen';
+import CompanyOverviewScreen from './components/screens/CompanyOverviewScreen';
+import PrivacyPolicyScreen from './components/screens/PrivacyPolicyScreen';
+import TermsOfServiceScreen from './components/screens/TermsOfServiceScreen';
+import HelpSupportScreen from './components/screens/HelpSupportScreen';
 import AddLeadModal from './components/modals/AddLeadModal';
 import AddContactModal from './components/modals/AddContactModal';
 import LeadDetailModal from './components/modals/LeadDetailModal';
@@ -40,6 +44,7 @@ import AddUserModal from './components/modals/AddUserModal';
 import EditUserModal from './components/modals/EditUserModal';
 import UniversalSearchModal from './components/modals/UniversalSearchModal';
 import AddPersonModal from './components/modals/AddPersonModal';
+import ErrorBoundary from './components/ui/ErrorBoundary';
 import { NotificationProvider, useNotification } from './context/NotificationContext';
 
 const firebaseConfig = {
@@ -75,15 +80,40 @@ const AuthScreen = () => {
     };
 
     return (
-        <div className="bg-gray-900 text-white min-h-screen flex flex-col justify-center items-center p-4">
-            <h1 className="text-3xl font-bold mb-6 text-amber-400">Sales Tracker</h1>
-            <div className="w-full max-w-sm space-y-4">
-                <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 bg-gray-800 rounded-md border border-gray-700 focus:ring-amber-500 focus:border-amber-500"/>
-                <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 bg-gray-800 rounded-md border border-gray-700 focus:ring-amber-500 focus:border-amber-500"/>
-                {error && <p className="text-red-500 text-sm">{error}</p>}
-                <div className="flex space-x-4">
-                    <button onClick={() => handleAuthAction(signInWithEmailAndPassword)} className="w-full p-3 bg-blue-600 rounded-md font-semibold hover:bg-blue-700">Sign In</button>
-                    <button onClick={() => handleAuthAction(createUserWithEmailAndPassword)} className="w-full p-3 bg-green-600 rounded-md font-semibold hover:bg-green-700">Sign Up</button>
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+            <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-96">
+                <h2 className="text-2xl font-bold text-white mb-6 text-center">Sales Tracker</h2>
+                
+                <div className="space-y-4">
+                    <input 
+                        type="email" 
+                        placeholder="Email" 
+                        value={email} 
+                        onChange={(e) => setEmail(e.target.value)} 
+                        className="w-full p-3 bg-gray-700 text-white rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
+                    />
+                    <input 
+                        type="password" 
+                        placeholder="Password" 
+                        value={password} 
+                        onChange={(e) => setPassword(e.target.value)} 
+                        className="w-full p-3 bg-gray-700 text-white rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
+                    />
+                    {error && <p className="text-red-500 text-sm">{error}</p>}
+                    <div className="space-y-2">
+                        <button 
+                            onClick={() => handleAuthAction(signInWithEmailAndPassword)} 
+                            className="w-full bg-amber-500 text-white p-3 rounded-md hover:bg-amber-600 transition-colors"
+                        >
+                            Sign In
+                        </button>
+                        <button 
+                            onClick={() => handleAuthAction(createUserWithEmailAndPassword)} 
+                            className="w-full bg-green-600 text-white p-3 rounded-md hover:bg-green-700 transition-colors"
+                        >
+                            Sign Up
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -95,6 +125,11 @@ const AppContent = () => {
     const [loading, setLoading] = useState(true);
     const [activeScreen, setActiveScreen] = useState('DASHBOARD');
     
+    // Debug logging for state changes
+    useEffect(() => {
+        console.log('App: activeScreen changed to:', activeScreen);
+    }, [activeScreen]);
+
     // Data states using Map to prevent duplicates
     const [allUsers, setAllUsers] = useState(new Map());
     const [leads, setLeads] = useState(new Map());
@@ -140,6 +175,19 @@ const AppContent = () => {
     const [loadingMore, setLoadingMore] = useState(false);
 
     const { addToast } = useNotification();
+
+    // Enhanced navigation handler with debugging
+    const handleScreenChange = useCallback((screenName) => {
+        console.log('App: handleScreenChange called with:', screenName);
+        console.log('App: setActiveScreen type:', typeof setActiveScreen);
+        
+        if (typeof setActiveScreen === 'function') {
+            setActiveScreen(screenName);
+            console.log('App: Successfully set activeScreen to:', screenName);
+        } else {
+            console.error('App: setActiveScreen is not a function!');
+        }
+    }, []);
     
     useEffect(() => {
         // Handle Firebase email link sign-in
@@ -152,10 +200,7 @@ const AppContent = () => {
                 signInWithEmailLink(auth, email, window.location.href)
                     .then((result) => {
                         window.localStorage.removeItem('emailForSignIn');
-                        // You can access the user's info here: result.user
-                        // The user is signed in.
                         addToast('Successfully signed in!', 'success');
-                        // Clear the URL to remove the sign-in link parameters.
                         window.history.replaceState({}, document.title, window.location.pathname);
                     })
                     .catch((error) => {
@@ -195,19 +240,19 @@ const AppContent = () => {
     const fetchMoreData = useCallback(async (collectionName) => {
         if (loadingMore) return;
         setLoadingMore(true);
-    
+        
         let lastDoc, setLastDoc, setData;
         if (collectionName === 'leads') { lastDoc = lastLead; setLastDoc = setLastLead; setData = setLeads; }
         else if (collectionName === 'clients') { lastDoc = lastClient; setLastDoc = setLastClient; setData = setClients; }
         else if (collectionName === 'policies') { lastDoc = lastPolicy; setLastDoc = setLastPolicy; setData = setPolicies; }
         else { setLoadingMore(false); return; }
-    
+        
         try {
             const q = query(collection(db, collectionName), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(25));
             const documentSnapshots = await getDocs(q);
             const lastVisible = documentSnapshots.docs[documentSnapshots.docs.length-1];
             if(lastVisible) setLastDoc(lastVisible);
-    
+            
             setData(prevData => {
                 const newData = new Map(prevData);
                 documentSnapshots.docs.forEach(d => {
@@ -224,14 +269,14 @@ const AppContent = () => {
 
     useEffect(() => {
         if (!user) return;
-    
+        
         const transformTimestamp = (item, key) => {
             if (item[key] && item[key].seconds) {
                 return { ...item, [key]: new Timestamp(item[key].seconds, item[key].nanoseconds).toDate() };
             }
             return item;
         };
-    
+        
         const subscribeToCollection = (collectionName, setter, lastDocSetter, paginated) => {
             const q = paginated 
                 ? query(collection(db, collectionName), orderBy('createdAt', 'desc'), limit(25))
@@ -250,14 +295,14 @@ const AppContent = () => {
                     });
                     return newData;
                 });
-    
+                
                 if (paginated && snapshot.docs.length > 0) {
                     const lastVisible = snapshot.docs[snapshot.docs.length-1];
                     lastDocSetter(lastVisible);
                 }
             }, (error) => console.error(`Error fetching ${collectionName}:`, error));
         };
-    
+        
         const unsubscribes = [
             subscribeToCollection('leads', setLeads, setLastLead, true),
             subscribeToCollection('clients', setClients, setLastClient, true),
@@ -468,60 +513,124 @@ const AppContent = () => {
     const handleOpenPolicyModal = (policy = null) => { setSelectedPolicy(policy); setPolicyModalOpen(true); };
 
     const renderActiveScreen = () => {
+        console.log('App: renderActiveScreen called with activeScreen:', activeScreen);
+        
         const screens = {
-            'DASHBOARD': <Dashboard activities={Array.from(activities.values())} leads={Array.from(leads.values())} policies={Array.from(policies.values())} clients={Array.from(clients.values())} currentUser={user} allUsers={Array.from(allUsers.values())} />,
-            'LEADS': <LeadsScreen leads={Array.from(leads.values())} onSelectLead={handleSelectLead} allUsers={Array.from(allUsers.values())} currentUser={user} onUpdateLead={handleUpdateLead} fetchMoreData={() => fetchMoreData('leads')} loadingMore={loadingMore} />,
-            'PORTFOLIO': <PortfolioScreen clients={Array.from(clients.values())} policies={Array.from(policies.values())} onSelectClient={handleSelectClient} onSelectPolicy={handleOpenPolicyModal} fetchMoreData={fetchMoreData} loadingMore={loadingMore}/>,
-            'AGENDA': <AgendaScreen activities={Array.from(activities.values())} currentUser={user} allUsers={Array.from(allUsers.values())} onStartCallingSession={handleStartCallingSession} />,
-            'CONTACTS': <ContactsScreen contacts={Array.from(contacts.values())} />,
-            'LEADERBOARD': <LeaderboardScreen allUsers={Array.from(allUsers.values())} activities={Array.from(activities.values())} currentUser={user} />,
-            'REPORTS': <ReportsScreen activities={Array.from(activities.values())} leads={Array.from(leads.values())} policies={Array.from(policies.values())} allUsers={Array.from(allUsers.values())} currentUser={user} />,
-            'GOALS': <GoalsScreen activities={Array.from(activities.values())} userId={user?.uid} currentUser={user} allUsers={Array.from(allUsers.values())} />,
-            'MANUAL_REPORT': <ManualReportScreen currentUser={user} onLogActivity={handleLogActivity} addToast={addToast} />,
+            'DASHBOARD': <Dashboard 
+                user={user} 
+                allUsers={Array.from(allUsers.values())}
+                leads={Array.from(leads.values())} 
+                clients={Array.from(clients.values())} 
+                activities={Array.from(activities.values())} 
+                policies={Array.from(policies.values())} 
+                onSelectLead={handleSelectLead} 
+                onSelectClient={handleSelectClient} 
+                onSelectPolicy={handleSelectPolicy} 
+            />,
+            'LEADS': <LeadsScreen 
+                leads={Array.from(leads.values())} 
+                onSelectLead={handleSelectLead} 
+                onFetchMore={() => fetchMoreData('leads')} 
+                loadingMore={loadingMore} 
+            />,
+            'PORTFOLIO': <PortfolioScreen 
+                clients={Array.from(clients.values())} 
+                onSelectClient={handleSelectClient} 
+                onFetchMore={() => fetchMoreData('clients')} 
+                loadingMore={loadingMore} 
+            />,
+            'AGENDA': <AgendaScreen 
+                user={user}
+                activities={Array.from(activities.values())} 
+                onLogActivity={handleLogActivity} 
+                onStartCallingSession={handleStartCallingSession} 
+            />,
+            'CONTACTS': <ContactsScreen 
+                contacts={Array.from(contacts.values())} 
+                onAddContact={handleAddContact} 
+            />,
+            'LEADERBOARD': <LeaderboardScreen 
+                user={user}
+                users={Array.from(allUsers.values())} 
+            />,
+            'REPORTS': <ReportsScreen 
+                user={user} 
+                activities={Array.from(activities.values())} 
+                leads={Array.from(leads.values())} 
+                clients={Array.from(clients.values())} 
+                policies={Array.from(policies.values())} 
+            />,
+            'GOALS': <GoalsScreen user={user} />,
+            'MANUAL_REPORT': <ManualReportScreen user={user} />,
+            'COMPANY_OVERVIEW': <CompanyOverviewScreen />,
+            'PRIVACY_POLICY': <PrivacyPolicyScreen />,
+            'TERMS_OF_SERVICE': <TermsOfServiceScreen />,
+            'HELP_SUPPORT': <HelpSupportScreen />,
         };
-        return screens[activeScreen] || screens['DASHBOARD'];
+        
+        const screenComponent = screens[activeScreen] || screens['DASHBOARD'];
+        console.log('App: Rendering screen component for:', activeScreen);
+        return screenComponent;
     };
 
-    if (loading) return <div className="bg-gray-900 text-white min-h-screen flex justify-center items-center"><p>Initializing...</p></div>;
+    if (loading) return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Initializing...</div>;
     if (!user) return <AuthScreen />;
 
     return (
-        <div className="bg-gray-900 text-white min-h-screen font-sans">
-            <TopHeader user={user} onProfileClick={() => setProfileOpen(true)} onSearchClick={handleSearchClick} isClockedIn={isClockedIn} onClockIn={handleClockIn} onClockOut={() => setClockOutModalOpen(true)} />
-            <main className="p-4 pb-20">{renderActiveScreen()}</main>
-            <SpeedDial onAddLead={() => setAddLeadModalOpen(true)} onAddContact={() => setAddContactModalOpen(true)} onAddActivity={() => setLogActivityModalOpen(true)} />
-            <BottomNav activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
-
-            <ProfileScreen 
-                isOpen={isProfileOpen} 
-                onClose={() => setProfileOpen(false)} 
-                user={user} 
-                userId={user.uid} 
-                onUpdateUser={handleUpdateUser} 
-                storage={storage} 
-                onOpenAddUserModal={() => setAddUserModalOpen(true)} 
-                onOpenEditUserModal={handleOpenEditUserModal} 
-                addToast={addToast} 
-                onLogout={handleLogout}
-                allUsers={Array.from(allUsers.values())}
-                teams={Array.from(teams.values())}
-                units={Array.from(units.values())}
-                branches={Array.from(branches.values())}
-                regions={Array.from(regions.values())}
-            />
-            <AddLeadModal isOpen={isAddLeadModalOpen} onClose={() => setAddLeadModalOpen(false)} onAddLead={handleAddLead} />
-            <AddContactModal isOpen={isAddContactModalOpen} onClose={() => setAddContactModalOpen(false)} onAddContact={handleAddContact} />
-            <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setAddUserModalOpen(false)} onAddUser={handleCreateUser} />
-            <AddPersonModal isOpen={isAddPersonModalOpen} onClose={() => setAddPersonModalOpen(false)} onSave={handleAddContact} />
-            <EditUserModal isOpen={isEditUserModalOpen} onClose={() => setEditUserModalOpen(false)} onSave={handleEditUser} userToEdit={userToEdit} teams={Array.from(teams.values())} units={Array.from(units.values())} branches={Array.from(branches.values())} />
-            <LeadDetailModal isOpen={isLeadDetailModalOpen} onClose={() => {setLeadDetailModalOpen(false); setSelectedLead(null);}} lead={selectedLead} onConvertToClient={handleConvertToClient} onUpdateLead={handleUpdateLead} />
-            <ClientModal isOpen={isClientModalOpen} onClose={() => setClientModalOpen(false)} client={selectedClient} policies={Array.from(policies.values())} onAddPolicy={() => handleOpenPolicyModal(null)} onSelectPolicy={handleOpenPolicyModal} onUpdateClient={handleUpdateClient} />
-            <LogActivityModal isOpen={isLogActivityModalOpen} onClose={() => setLogActivityModalOpen(false)} relatedTo={activityTarget} onLogActivity={handleLogActivity} currentUser={user} allUsers={Array.from(allUsers.values())} />
-            <ClockOutModal isOpen={isClockOutModalOpen} onClose={() => setClockOutModalOpen(false)} onClockOut={handleClockOut} user={user} activities={Array.from(activities.values())} />
-            <CallingSessionModal isOpen={isCallingSessionModalOpen} onClose={() => setCallingSessionModalOpen(false)} activities={callingSessionActivities} onLogCall={handleLogCallOutcome} onReschedule={handleRescheduleActivity} />
-            <PolicyModal isOpen={isPolicyModalOpen} onClose={() => setPolicyModalOpen(false)} policy={selectedPolicy} client={selectedClient} clientId={selectedClient?.id} onAddPolicy={handleAddPolicy} contacts={Array.from(contacts.values())} onAddNewPerson={() => setAddPersonModalOpen(true)} ageCalculationType={user?.settings?.ageCalculation || 'ageNextBirthday'} />
-            <UniversalSearchModal isOpen={isSearchModalOpen} onClose={handleCloseSearch} onSelectLead={handleSelectLead} onSelectClient={handleSelectClient} onSelectPolicy={handleSelectPolicy} />
-        </div>
+        <ErrorBoundary>
+            <div className="min-h-screen bg-gray-900 text-white">
+                <TopHeader 
+                    user={user} 
+                    onProfileClick={() => setProfileOpen(true)} 
+                    onSearchClick={handleSearchClick} 
+                    isClockedIn={isClockedIn} 
+                    onClockIn={handleClockIn} 
+                    onClockOut={() => setClockOutModalOpen(true)} 
+                />
+                {renderActiveScreen()}
+                <BottomNav 
+                    activeScreen={activeScreen} 
+                    onScreenChange={handleScreenChange}
+                />
+                <SpeedDial 
+                    onAddLead={() => setAddLeadModalOpen(true)} 
+                    onAddContact={() => setAddContactModalOpen(true)} 
+                    onAddActivity={() => setLogActivityModalOpen(true)} 
+                />
+                
+                <ProfileScreen 
+                    isOpen={isProfileOpen} 
+                    onClose={() => setProfileOpen(false)} 
+                    user={user} 
+                    userId={user.uid} 
+                    onUpdateUser={handleUpdateUser} 
+                    storage={storage} 
+                    onOpenAddUserModal={() => setAddUserModalOpen(true)} 
+                    onOpenEditUserModal={handleOpenEditUserModal} 
+                    addToast={addToast} 
+                    onLogout={handleLogout}
+                    allUsers={Array.from(allUsers.values())}
+                    teams={Array.from(teams.values())}
+                    units={Array.from(units.values())}
+                    branches={Array.from(branches.values())}
+                    regions={Array.from(regions.values())}
+                    onNavigateToScreen={handleScreenChange}
+                />
+                
+                <AddLeadModal isOpen={isAddLeadModalOpen} onClose={() => setAddLeadModalOpen(false)} onAddLead={handleAddLead} />
+                <AddContactModal isOpen={isAddContactModalOpen} onClose={() => setAddContactModalOpen(false)} onAddContact={handleAddContact} />
+                <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setAddUserModalOpen(false)} onAddUser={handleCreateUser} />
+                <AddPersonModal isOpen={isAddPersonModalOpen} onClose={() => setAddPersonModalOpen(false)} onSave={handleAddContact} />
+                <EditUserModal isOpen={isEditUserModalOpen} onClose={() => setEditUserModalOpen(false)} onSave={handleEditUser} userToEdit={userToEdit} teams={Array.from(teams.values())} units={Array.from(units.values())} branches={Array.from(branches.values())} />
+                <LeadDetailModal isOpen={isLeadDetailModalOpen} onClose={() => {setLeadDetailModalOpen(false); setSelectedLead(null);}} lead={selectedLead} onConvertToClient={handleConvertToClient} onUpdateLead={handleUpdateLead} />
+                <ClientModal isOpen={isClientModalOpen} onClose={() => setClientModalOpen(false)} client={selectedClient} policies={Array.from(policies.values())} onAddPolicy={() => handleOpenPolicyModal(null)} onSelectPolicy={handleOpenPolicyModal} onUpdateClient={handleUpdateClient} />
+                <LogActivityModal isOpen={isLogActivityModalOpen} onClose={() => setLogActivityModalOpen(false)} relatedTo={activityTarget} onLogActivity={handleLogActivity} currentUser={user} allUsers={Array.from(allUsers.values())} />
+                <ClockOutModal isOpen={isClockOutModalOpen} onClose={() => setClockOutModalOpen(false)} onClockOut={handleClockOut} user={user} activities={Array.from(activities.values())} />
+                <CallingSessionModal isOpen={isCallingSessionModalOpen} onClose={() => setCallingSessionModalOpen(false)} activities={callingSessionActivities} onLogCall={handleLogCallOutcome} onReschedule={handleRescheduleActivity} />
+                <PolicyModal isOpen={isPolicyModalOpen} onClose={() => setPolicyModalOpen(false)} policy={selectedPolicy} client={selectedClient} clientId={selectedClient?.id} onAddPolicy={handleAddPolicy} contacts={Array.from(contacts.values())} onAddNewPerson={() => setAddPersonModalOpen(true)} ageCalculationType={user?.settings?.ageCalculation || 'ageNextBirthday'} />
+                <UniversalSearchModal isOpen={isSearchModalOpen} onClose={handleCloseSearch} />
+            </div>
+        </ErrorBoundary>
     );
 };
 
