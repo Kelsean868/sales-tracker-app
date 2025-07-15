@@ -80,25 +80,34 @@ const ProfileScreen = ({
         setProfileData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSettingsChange = (e) => {
+    const handleSettingsChange = async (e) => {
         const { name, value, type, checked } = e.target;
         const val = type === 'checkbox' ? checked : value;
         const keys = name.split('.');
         
-        setSettings(prev => {
-            const newSettings = JSON.parse(JSON.stringify(prev));
-            let current = newSettings;
-            for (let i = 0; i < keys.length - 1; i++) {
-                current[keys[i]] = current[keys[i]] || {};
-                current = current[keys[i]];
-            }
-            current[keys[keys.length - 1]] = val;
-            return newSettings;
-        });
+        const newSettings = JSON.parse(JSON.stringify(settings));
+        let current = newSettings;
+        for (let i = 0; i < keys.length - 1; i++) {
+            current[keys[i]] = current[keys[i]] || {};
+            current = current[keys[i]];
+        }
+        current[keys[keys.length - 1]] = val;
+        setSettings(newSettings);
+        
+        try {
+            const userDocRef = doc(getFirestore(), 'users', userId);
+            await updateDoc(userDocRef, { settings: newSettings });
+            onUpdateUser({ ...user, settings: newSettings });
+            addToast('Setting updated!', 'success');
+        } catch (error) {
+            console.error("Error updating setting:", error);
+            addToast('Failed to update setting.', 'error');
+        }
     };
 
-    const handleThemeChange = (themeKey) => {
-        setSettings(prev => ({ ...prev, theme: themeKey }));
+    const handleThemeChange = async (themeKey) => {
+        const newSettings = { ...settings, theme: themeKey };
+        setSettings(newSettings);
         
         const root = window.document.documentElement;
         const theme = themes[themeKey];
@@ -106,15 +115,24 @@ const ProfileScreen = ({
         Object.keys(theme.colors).forEach(key => {
             root.style.setProperty(key, theme.colors[key]);
         });
+        
+        try {
+            const userDocRef = doc(getFirestore(), 'users', userId);
+            await updateDoc(userDocRef, { settings: newSettings });
+            onUpdateUser({ ...user, settings: newSettings });
+            addToast('Theme updated!', 'success');
+        } catch (error) {
+            console.error("Error updating theme:", error);
+            addToast('Failed to update theme.', 'error');
+        }
     };
 
-    const handleSave = async () => {
+    const handleSaveProfile = async () => {
         if (!userId) return;
         const userDocRef = doc(getFirestore(), 'users', userId);
         try {
-            const dataToUpdate = { ...profileData, settings: settings };
-            await updateDoc(userDocRef, dataToUpdate);
-            onUpdateUser({ ...user, ...dataToUpdate });
+            await updateDoc(userDocRef, profileData);
+            onUpdateUser({ ...user, ...profileData });
             setIsEditing(false);
             addToast('Profile saved!', 'success');
         } catch (error) {
@@ -240,8 +258,7 @@ const ProfileScreen = ({
                              <button
                                 key={key}
                                 onClick={() => handleThemeChange(key)}
-                                disabled={!isEditing}
-                                className={`p-4 rounded-lg border-2 ${settings.theme === key ? 'border-amber-500' : 'border-gray-600'} transition-all disabled:opacity-50`}
+                                className={`p-4 rounded-lg border-2 ${settings.theme === key ? 'border-amber-500' : 'border-gray-600'} transition-all`}
                             >
                                 <div className="flex justify-between items-center mb-2">
                                     <span className="font-semibold">{theme.name}</span>
@@ -266,14 +283,12 @@ const ProfileScreen = ({
                     <div className="flex items-center space-x-2 bg-gray-700 p-1 rounded-lg">
                         <button 
                             onClick={() => handleSettingsChange({target: {name: 'ageCalculation', value: 'ageNextBirthday'}})}
-                            disabled={!isEditing}
                             className={`w-1/2 p-2 rounded-md text-sm font-semibold transition-colors ${settings.ageCalculation === 'ageNextBirthday' ? 'bg-amber-500 text-gray-900' : 'text-white'}`}
                         >
                             Age Next Birthday
                         </button>
                          <button 
                             onClick={() => handleSettingsChange({target: {name: 'ageCalculation', value: 'currentAge'}})}
-                            disabled={!isEditing}
                             className={`w-1/2 p-2 rounded-md text-sm font-semibold transition-colors ${settings.ageCalculation === 'currentAge' ? 'bg-amber-500 text-gray-900' : 'text-white'}`}
                         >
                             Current Age
@@ -286,7 +301,6 @@ const ProfileScreen = ({
                         name="weekStartsOn"
                         value={settings.weekStartsOn}
                         onChange={handleSettingsChange}
-                        disabled={!isEditing}
                         className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500"
                     >
                         <option value="Sunday">Sunday</option>
@@ -299,7 +313,6 @@ const ProfileScreen = ({
                         name="temperatureUnit"
                         value={settings.temperatureUnit}
                         onChange={handleSettingsChange}
-                        disabled={!isEditing}
                         className="w-full bg-gray-700 text-white border-gray-600 rounded-md p-2 focus:ring-amber-500 focus:border-amber-500"
                     >
                         <option value="Celsius">Celsius</option>
@@ -311,11 +324,11 @@ const ProfileScreen = ({
                  <h3 className="text-lg font-semibold border-b border-gray-700 pb-2">Notifications</h3>
                  <div className="flex items-center justify-between">
                     <label htmlFor="dailySummaryEmail" className="text-white">Email me a daily summary report</label>
-                    <input type="checkbox" id="dailySummaryEmail" name="notifications.dailySummaryEmail" checked={settings.notifications?.dailySummaryEmail || false} onChange={handleSettingsChange} disabled={!isEditing} className="h-6 w-6 rounded text-amber-500 bg-gray-700 border-gray-600 focus:ring-amber-500 disabled:opacity-50"/>
+                    <input type="checkbox" id="dailySummaryEmail" name="notifications.dailySummaryEmail" checked={settings.notifications?.dailySummaryEmail || false} onChange={handleSettingsChange} className="h-6 w-6 rounded text-amber-500 bg-gray-700 border-gray-600 focus:ring-amber-500"/>
                 </div>
                 <div className="flex items-center justify-between">
                     <label htmlFor="upcomingFollowupPush" className="text-white">Push notifications for upcoming follow-ups</label>
-                    <input type="checkbox" id="upcomingFollowupPush" name="notifications.upcomingFollowupPush" checked={settings.notifications?.upcomingFollowupPush || false} onChange={handleSettingsChange} disabled={!isEditing} className="h-6 w-6 rounded text-amber-500 bg-gray-700 border-gray-600 focus:ring-amber-500 disabled:opacity-50"/>
+                    <input type="checkbox" id="upcomingFollowupPush" name="notifications.upcomingFollowupPush" checked={settings.notifications?.upcomingFollowupPush || false} onChange={handleSettingsChange} className="h-6 w-6 rounded text-amber-500 bg-gray-700 border-gray-600 focus:ring-amber-500"/>
                 </div>
             </div>
         </div>
@@ -447,14 +460,14 @@ const ProfileScreen = ({
                 <header className="flex-shrink-0 flex justify-between items-center p-4 border-b border-gray-700">
                     <h1 className="text-2xl font-bold">Profile & Settings</h1>
                     <div className="flex items-center gap-4">
-                        {activeTab !== 'management' && (
+                        {activeTab === 'profile' && (
                             isEditing ? (
-                                <button onClick={handleSave} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md flex items-center">
-                                    <Save className="w-5 h-5 mr-2"/> Save Changes
+                                <button onClick={handleSaveProfile} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md flex items-center">
+                                    <Save className="w-5 h-5 mr-2"/> Save Profile
                                 </button>
                             ) : (
                                 <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md flex items-center">
-                                    <Edit className="w-5 h-5 mr-2"/> Edit
+                                    <Edit className="w-5 h-5 mr-2"/> Edit Profile
                                 </button>
                             )
                         )}
